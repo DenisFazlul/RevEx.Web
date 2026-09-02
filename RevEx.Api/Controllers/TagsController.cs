@@ -1,0 +1,96 @@
+using Microsoft.AspNetCore.Mvc;
+using RevEx.Application.Abstractions.Persistence;
+using RevEx.Application.DTOs.Tag;
+using RevEx.Domain.Entities;
+
+namespace RevEx.Api.Controllers;
+
+[ApiController]
+[Route("api/tags")]
+public sealed class TagsController(
+    IRepository<Tag> repository,
+    IUnitOfWork unitOfWork) : ControllerBase
+{
+    [HttpGet]
+    public async Task<ActionResult<IReadOnlyCollection<TagDto>>> GetAll(CancellationToken cancellationToken)
+    {
+        var entities = await repository.GetAllAsync(cancellationToken);
+        return Ok(entities.Select(Map).ToArray());
+    }
+
+    [HttpGet("{id:int}")]
+    public async Task<ActionResult<TagDto>> GetById(int id, CancellationToken cancellationToken)
+    {
+        var entity = await repository.GetByIdAsync(id, cancellationToken);
+        return entity is null ? NotFound() : Ok(Map(entity));
+    }
+
+    [HttpPost]
+    public async Task<ActionResult<TagDto>> Create(CreateTagDto request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            return ValidationProblem("Name must not be empty.");
+        }
+
+        var name = request.Name.Trim();
+        if (await NameExists(name, null, cancellationToken))
+        {
+            return Conflict(new { message = "A tag with this name already exists." });
+        }
+
+        var entity = new Tag { Name = name };
+        await repository.AddAsync(entity, cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return CreatedAtAction(nameof(GetById), new { id = entity.Id }, Map(entity));
+    }
+
+    [HttpPut("{id:int}")]
+    public async Task<IActionResult> Update(int id, UpdateTagDto request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            return ValidationProblem("Name must not be empty.");
+        }
+
+        var entity = await repository.GetByIdAsync(id, cancellationToken);
+        if (entity is null)
+        {
+            return NotFound();
+        }
+
+        var name = request.Name.Trim();
+        if (await NameExists(name, id, cancellationToken))
+        {
+            return Conflict(new { message = "A tag with this name already exists." });
+        }
+
+        entity.Name = name;
+        await repository.UpdateAsync(entity, cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return NoContent();
+    }
+
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)
+    {
+        var entity = await repository.GetByIdAsync(id, cancellationToken);
+        if (entity is null)
+        {
+            return NotFound();
+        }
+
+        await repository.DeleteAsync(entity, cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return NoContent();
+    }
+
+    private async Task<bool> NameExists(string name, int? excludedId, CancellationToken cancellationToken)
+    {
+        var tags = await repository.GetAllAsync(cancellationToken);
+        return tags.Any(item => item.Id != excludedId && string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static TagDto Map(Tag entity) =>
+        new(entity.Id, entity.Name, entity.CreatedAt, entity.UpdatedAt);
+}

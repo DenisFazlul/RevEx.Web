@@ -1,0 +1,214 @@
+using Microsoft.AspNetCore.Mvc;
+using RevEx.Api.Models;
+using RevEx.Application.Abstractions.Persistence;
+using RevEx.Application.Abstractions.Storage;
+using RevEx.Application.DTOs.ContentVersion;
+using RevEx.Domain.Entities;
+using ContentEntity = RevEx.Domain.Entities.Content;
+
+namespace RevEx.Api.Controllers;
+
+[ApiController]
+[Route("api/content-versions")]
+public sealed class ContentVersionsController(
+    IRepository<ContentEntity> contentRepository,
+    IRepository<ContentVersion> versionRepository,
+    IRepository<ContentFile> fileRepository,
+    IUnitOfWork unitOfWork,
+    IFileStorage fileStorage) : ControllerBase
+{
+    private static readonly TimeSpan SimulatedUploadDelay = TimeSpan.FromSeconds(2);
+
+    [HttpGet]
+    [ProducesResponseType<IReadOnlyCollection<ContentVersionDto>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyCollection<ContentVersionDto>>> GetAll(
+        CancellationToken cancellationToken)
+    {
+        var entities = await versionRepository.GetAllAsync(cancellationToken);
+        return Ok(entities.Select(Map).ToArray());
+    }
+
+    [HttpGet("{id:int}")]
+    [ProducesResponseType<ContentVersionDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ContentVersionDto>> GetById(
+        int id,
+        CancellationToken cancellationToken)
+    {
+        var entity = await versionRepository.GetByIdAsync(id, cancellationToken);
+        return entity is null ? NotFound() : Ok(Map(entity));
+    }
+
+    [HttpPost]
+    [ProducesResponseType<ContentVersionDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ContentVersionDto>> Create(
+        CreateContentVersionDto request,
+        CancellationToken cancellationToken)
+    {
+        var content = await contentRepository.GetByIdAsync(request.ContentId, cancellationToken);
+        if (content is null)
+        {
+            return NotFound(new { message = $"Content with id {request.ContentId} was not found." });
+        }
+
+        var entity = new ContentVersion
+        {
+            ContentId = content.Id,
+            Content = content,
+            Name = string.IsNullOrWhiteSpace(request.Name) ? "Новая версия" : request.Name.Trim(),
+            Date = request.Date ?? DateTimeOffset.UtcNow,
+            Status = request.Status ?? "draft"
+        };
+
+        await versionRepository.AddAsync(entity, cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        var result = Map(entity);
+        return CreatedAtAction(nameof(GetById), new { id = entity.Id }, result);
+    }
+
+    [HttpPost("{id:int}/file")]
+    [Consumes("multipart/form-data")]
+    [ProducesResponseType<ContentVersionDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ContentVersionDto>> AddFile(
+        int id,
+        [FromForm] UploadFileRequest request,
+        CancellationToken cancellationToken)
+    {
+        var version = await versionRepository.GetByIdAsync(id, cancellationToken);
+        if (version is null)
+        {
+            return NotFound();
+        }
+
+        if (request.File.Length == 0)
+        {
+            return BadRequest(new { message = "The uploaded file must not be empty." });
+        }
+
+        var file = new ContentFile
+        {
+            Url = "pending",
+            ContentVersionId = version.Id,
+            ContentVersion = version
+        };
+        await fileRepository.AddAsync(file, cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        try
+        {
+            // Intentional delay makes sequential upload progress visible in the demo UI.
+            await Task.Delay(SimulatedUploadDelay, cancellationToken);
+            await using var stream = request.File.OpenReadStream();
+            await fileStorage.SaveAsync(file.Id, stream, cancellationToken);
+
+            file.Url = $"/api/content-files/{file.Id}/content";
+
+            await fileRepository.UpdateAsync(file, cancellationToken);
+            await versionRepository.UpdateAsync(version, cancellationToken);
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+        catch
+        {
+            await fileStorage.DeleteAsync(file.Id, CancellationToken.None);
+            await fileRepository.DeleteAsync(file, CancellationToken.None);
+            await unitOfWork.SaveChangesAsync(CancellationToken.None);
+            throw;
+        }
+
+        return CreatedAtAction(nameof(GetById), new { id = version.Id }, Map(version));
+    }
+
+    [HttpDelete("{id:int}/files/{fileId:int}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DeleteFile(
+        int id,
+        int fileId,
+        CancellationToken cancellationToken)
+    {
+        var version = await versionRepository.GetByIdAsync(id, cancellationToken);
+        if (version is null)
+        {
+            return NotFound();
+        }
+
+        var file = version.Files.FirstOrDefault(item => item.Id == fileId);
+        if (file is null)
+        {
+            return NotFound(new { message = $"File {fileId} is not attached to content version {id}." });
+        }
+
+        version.Files.Remove(file);
+        await fileStorage.DeleteAsync(file.Id, cancellationToken);
+        await fileRepository.DeleteAsync(file, cancellationToken);
+        await versionRepository.UpdateAsync(version, cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return NoContent();
+    }
+
+    [HttpPut("{id:int}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Update(
+        int id,
+        UpdateContentVersionDto request,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Name) || request.Date == default)
+        {
+            return ValidationProblem("Name and Date must be provided.");
+        }
+
+        var version = await versionRepository.GetByIdAsync(id, cancellationToken);
+        if (version is null)
+        {
+            return NotFound();
+        }
+
+        version.Name = request.Name.Trim();
+        version.Date = request.Date;
+        version.Status = request.Status;
+        await versionRepository.UpdateAsync(version, cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return NoContent();
+    }
+
+    [HttpDelete("{id:int}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)
+    {
+        var version = await versionRepository.GetByIdAsync(id, cancellationToken);
+        if (version is null)
+        {
+            return NotFound();
+        }
+
+        foreach (var file in version.Files.ToArray())
+        {
+            await fileStorage.DeleteAsync(file.Id, cancellationToken);
+            await fileRepository.DeleteAsync(file, cancellationToken);
+        }
+
+        await versionRepository.DeleteAsync(version, cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return NoContent();
+    }
+
+    private static ContentVersionDto Map(ContentVersion entity) =>
+        new(
+            entity.Id,
+            entity.ContentId,
+            entity.Files.Select(file => file.Id).ToArray(),
+            entity.Name,
+            entity.Date,
+            entity.Status,
+            entity.CreatedAt,
+            entity.UpdatedAt);
+}
