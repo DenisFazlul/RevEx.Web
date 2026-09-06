@@ -1,4 +1,8 @@
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using RevEx.Application.Abstractions.Persistence;
 using RevEx.Application.Abstractions.Storage;
 using RevEx.Infrastructure.Data;
@@ -10,7 +14,53 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT"
+    });
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        [new OpenApiSecurityScheme
+        {
+            Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
+        }] = []
+    });
+});
+
+var authenticationSection = builder.Configuration.GetRequiredSection("Authentication");
+var authority = authenticationSection["Authority"]
+    ?? throw new InvalidOperationException("Authentication:Authority is required.");
+var audience = authenticationSection["Audience"]
+    ?? throw new InvalidOperationException("Authentication:Audience is required.");
+
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.Authority = authority;
+        options.Audience = audience;
+        var metadataAddress = authenticationSection["MetadataAddress"];
+        if (!string.IsNullOrWhiteSpace(metadataAddress))
+            options.MetadataAddress = metadataAddress;
+        options.RequireHttpsMetadata = authenticationSection.GetValue("RequireHttpsMetadata", true);
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = authority,
+            ValidateAudience = true,
+            ValidAudience = audience
+        };
+    });
+builder.Services.AddAuthorization(options =>
+{
+    options.FallbackPolicy = new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+});
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("Frontend", policy => policy
@@ -40,6 +90,8 @@ app.UseSwaggerUI(options =>
 });
 
 app.UseCors("Frontend");
+app.UseAuthentication();
+app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
