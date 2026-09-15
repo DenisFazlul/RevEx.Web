@@ -212,7 +212,7 @@ public sealed class ContentController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ContentDto>> UploadPreview(
         int id,
-        [FromForm] UploadFileRequest request,
+        [FromForm] UploadContentPreviewRequest request,
         CancellationToken cancellationToken)
     {
         var entity = await repository.GetByIdAsync(id, cancellationToken);
@@ -221,9 +221,12 @@ public sealed class ContentController(
             return NotFound();
         }
 
-        if (request.File.Length == 0 || request.File.ContentType is not ("image/jpeg" or "image/png" or "image/webp" or "image/gif"))
+        if (!ContentPreviewUploadConfiguration.IsSupported(request.File))
         {
-            return BadRequest(new { message = "Preview must be a non-empty JPEG, PNG, WebP or GIF image." });
+            return BadRequest(new
+            {
+                message = "Preview must be a JPEG, PNG, WebP or GIF image no larger than 10 MB."
+            });
         }
 
         var oldFileId = entity.PreviewFileId;
