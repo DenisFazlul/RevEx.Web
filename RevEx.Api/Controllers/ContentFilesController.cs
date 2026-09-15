@@ -46,9 +46,18 @@ public sealed class ContentFilesController(
         var stream = await fileStorage.OpenReadAsync(id, cancellationToken);
         return stream is null
             ? NotFound()
-            : File(stream, "application/octet-stream", $"file-{id}");
+            : File(stream, "application/octet-stream", entity.OriginalFileName);
     }
 
     private static ContentFileDto Map(ContentFile entity) =>
-        new(entity.Id, entity.Url, entity.ContentVersionId, entity.CreatedAt, entity.UpdatedAt);
+        new(
+            entity.Id,
+            entity.Url,
+            entity.ContentVersionId,
+            entity.OriginalFileName,
+            entity.Extension,
+            entity.SizeBytes,
+            entity.Role,
+            entity.CreatedAt,
+            entity.UpdatedAt);
 }

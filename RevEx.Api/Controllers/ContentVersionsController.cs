@@ -17,7 +17,15 @@ public sealed class ContentVersionsController(
     IUnitOfWork unitOfWork,
     IFileStorage fileStorage) : ControllerBase
 {
-    private static readonly TimeSpan SimulatedUploadDelay = TimeSpan.FromSeconds(2);
+    private const long MaximumFileSizeBytes = 100 * 1024 * 1024;
+    private static readonly IReadOnlyDictionary<string, string[]> AllowedExtensionsByRole =
+        new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["primary"] = [".rfa"],
+            ["type-catalog"] = [".txt"],
+            ["lookup-table"] = [".csv"],
+            ["attachment"] = [".txt", ".csv", ".pdf"]
+        };
 
     [HttpGet]
     [ProducesResponseType<IReadOnlyCollection<ContentVersionDto>>(StatusCodes.Status200OK)]
@@ -59,7 +67,9 @@ public sealed class ContentVersionsController(
             Content = content,
             Name = string.IsNullOrWhiteSpace(request.Name) ? "Новая версия" : request.Name.Trim(),
             Date = request.Date ?? DateTimeOffset.UtcNow,
-            Status = request.Status ?? "draft"
+            Status = request.Status ?? "draft",
+            Application = request.Application.Trim().ToLowerInvariant(),
+            ApplicationVersion = request.ApplicationVersion.Trim()
         };
 
         await versionRepository.AddAsync(entity, cancellationToken);
@@ -85,14 +95,36 @@ public sealed class ContentVersionsController(
             return NotFound();
         }
 
-        if (request.File.Length == 0)
+        if (request.File.Length == 0 || request.File.Length > MaximumFileSizeBytes)
         {
-            return BadRequest(new { message = "The uploaded file must not be empty." });
+            return BadRequest(new { message = "The uploaded file must be between 1 byte and 100 MB." });
+        }
+
+        var role = request.Role.Trim().ToLowerInvariant();
+        var originalFileName = Path.GetFileName(request.File.FileName);
+        var extension = Path.GetExtension(originalFileName).ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(originalFileName) ||
+            !AllowedExtensionsByRole.TryGetValue(role, out var allowedExtensions) ||
+            !allowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+        {
+            return BadRequest(new
+            {
+                message = "The file extension is not allowed for the selected file role."
+            });
+        }
+
+        if (role == "primary" && version.Files.Any(item => item.Role == "primary"))
+        {
+            return Conflict(new { message = "This content version already has a primary Revit file." });
         }
 
         var file = new ContentFile
         {
             Url = "pending",
+            OriginalFileName = originalFileName,
+            Extension = extension,
+            SizeBytes = request.File.Length,
+            Role = role,
             ContentVersionId = version.Id,
             ContentVersion = version
         };
@@ -101,8 +133,6 @@ public sealed class ContentVersionsController(
 
         try
         {
-            // Intentional delay makes sequential upload progress visible in the demo UI.
-            await Task.Delay(SimulatedUploadDelay, cancellationToken);
             await using var stream = request.File.OpenReadStream();
             await fileStorage.SaveAsync(file.Id, stream, cancellationToken);
 
@@ -174,6 +204,8 @@ public sealed class ContentVersionsController(
         version.Name = request.Name.Trim();
         version.Date = request.Date;
         version.Status = request.Status;
+        version.Application = request.Application.Trim().ToLowerInvariant();
+        version.ApplicationVersion = request.ApplicationVersion.Trim();
         await versionRepository.UpdateAsync(version, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return NoContent();
@@ -209,6 +241,8 @@ public sealed class ContentVersionsController(
             entity.Name,
             entity.Date,
             entity.Status,
+            entity.Application,
+            entity.ApplicationVersion,
             entity.CreatedAt,
             entity.UpdatedAt);
 }

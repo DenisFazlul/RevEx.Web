@@ -12,4 +12,8 @@
     <ProjectReference Include="..\RevEx.Application\RevEx.Application.csproj" />
     <ProjectReference Include="..\RevEx.Domain\RevEx.Domain.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Data/SeedFiles/Door-Single-Glass-Push-Plate.rfa"
+                      LogicalName="RevEx.SeedFiles.Door-Single-Glass-Push-Plate.rfa" />
+  </ItemGroup>
 </Project>

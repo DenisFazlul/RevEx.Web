@@ -42,6 +42,13 @@ public sealed class ContentController(
             result = result.Where(content => categoryIds.Contains(content.CategoryId));
         }
 
+        if (query.TagIds.Length > 0)
+        {
+            var tagIds = query.TagIds.ToHashSet();
+            result = result.Where(content =>
+                tagIds.All(tagId => content.Tags.Any(tag => tag.Id == tagId)));
+        }
+
         if (!string.IsNullOrWhiteSpace(query.Name))
         {
             var name = query.Name.Trim();
@@ -220,7 +227,14 @@ public sealed class ContentController(
         }
 
         var oldFileId = entity.PreviewFileId;
-        var previewFile = new ContentFile { Url = "pending" };
+        var previewFile = new ContentFile
+        {
+            Url = "pending",
+            OriginalFileName = Path.GetFileName(request.File.FileName),
+            Extension = Path.GetExtension(request.File.FileName).ToLowerInvariant(),
+            SizeBytes = request.File.Length,
+            Role = "preview"
+        };
         await fileRepository.AddAsync(previewFile, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 

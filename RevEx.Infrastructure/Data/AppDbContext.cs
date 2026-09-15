@@ -76,6 +76,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         {
             entity.Property(item => item.Name).IsRequired().HasMaxLength(200);
             entity.Property(item => item.Status).IsRequired().HasMaxLength(32);
+            entity.Property(item => item.Application).IsRequired().HasMaxLength(32);
+            entity.Property(item => item.ApplicationVersion).IsRequired().HasMaxLength(32);
             entity.HasIndex(item => item.ContentId);
             entity.Navigation(item => item.Files).AutoInclude();
         });
@@ -83,6 +85,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         modelBuilder.Entity<ContentFile>(entity =>
         {
             entity.Property(item => item.Url).IsRequired().HasMaxLength(2048);
+            entity.Property(item => item.OriginalFileName).IsRequired().HasMaxLength(255);
+            entity.Property(item => item.Extension).IsRequired().HasMaxLength(32);
+            entity.Property(item => item.Role).IsRequired().HasMaxLength(32);
             entity.HasIndex(item => item.ContentVersionId);
             entity.HasOne(item => item.ContentVersion)
                 .WithMany(item => item.Files)
