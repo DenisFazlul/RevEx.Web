@@ -11,6 +11,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<ContentFile> Files => Set<ContentFile>();
     public DbSet<ContentStatus> ContentStatuses => Set<ContentStatus>();
     public DbSet<Tag> Tags => Set<Tag>();
+    public DbSet<TagGroup> TagGroups => Set<TagGroup>();
 
     public override int SaveChanges()
     {
@@ -112,6 +113,25 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         {
             entity.Property(item => item.Name).IsRequired().HasMaxLength(100);
             entity.HasIndex(item => item.Name).IsUnique();
+            entity.HasIndex(item => item.TagGroupId);
+            entity.HasOne(item => item.TagGroup)
+                .WithMany(item => item.Tags)
+                .HasForeignKey(item => item.TagGroupId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.Navigation(item => item.TagGroup).AutoInclude();
+        });
+
+        modelBuilder.Entity<TagGroup>(entity =>
+        {
+            entity.Property(item => item.Name).IsRequired().HasMaxLength(100);
+            entity.HasIndex(item => item.Name).IsUnique();
+            entity.HasData(new TagGroup
+            {
+                Id = 1,
+                Name = "Общие",
+                CreatedAt = DateTimeOffset.UnixEpoch,
+                UpdatedAt = DateTimeOffset.UnixEpoch
+            });
         });
     }
 

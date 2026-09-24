@@ -8,7 +8,7 @@ builder.Services
     .AddConfiguredAuthentication(builder.Configuration)
     .AddFrontendCors()
     .AddDatabase()
-    .AddInfrastructureServices();
+    .AddInfrastructureServices(builder.Configuration);
 
 var app = builder.Build();
 

@@ -9,6 +9,7 @@ namespace RevEx.Api.Controllers;
 [Route("api/tags")]
 public sealed class TagsController(
     IRepository<Tag> repository,
+    IRepository<TagGroup> groupRepository,
     IUnitOfWork unitOfWork) : ControllerBase
 {
     [HttpGet]
@@ -34,12 +35,16 @@ public sealed class TagsController(
         }
 
         var name = request.Name.Trim();
+        if (await groupRepository.GetByIdAsync(request.TagGroupId, cancellationToken) is null)
+        {
+            return ValidationProblem("TagGroupId must reference an existing tag group.");
+        }
         if (await NameExists(name, null, cancellationToken))
         {
             return Conflict(new { message = "A tag with this name already exists." });
         }
 
-        var entity = new Tag { Name = name };
+        var entity = new Tag { Name = name, TagGroupId = request.TagGroupId };
         await repository.AddAsync(entity, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return CreatedAtAction(nameof(GetById), new { id = entity.Id }, Map(entity));
@@ -60,12 +65,17 @@ public sealed class TagsController(
         }
 
         var name = request.Name.Trim();
+        if (await groupRepository.GetByIdAsync(request.TagGroupId, cancellationToken) is null)
+        {
+            return ValidationProblem("TagGroupId must reference an existing tag group.");
+        }
         if (await NameExists(name, id, cancellationToken))
         {
             return Conflict(new { message = "A tag with this name already exists." });
         }
 
         entity.Name = name;
+        entity.TagGroupId = request.TagGroupId;
         await repository.UpdateAsync(entity, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return NoContent();
@@ -92,5 +102,6 @@ public sealed class TagsController(
     }
 
     private static TagDto Map(Tag entity) =>
-        new(entity.Id, entity.Name, entity.CreatedAt, entity.UpdatedAt);
+        new(entity.Id, entity.Name, entity.TagGroupId, entity.TagGroup?.Name ?? string.Empty,
+            entity.CreatedAt, entity.UpdatedAt);
 }
