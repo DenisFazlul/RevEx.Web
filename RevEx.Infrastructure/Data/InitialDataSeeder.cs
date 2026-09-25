@@ -1,5 +1,4 @@
-using System.Text;
-using Microsoft.EntityFrameworkCore;
+using RevEx.Application.Abstractions.Persistence;
 using RevEx.Application.Abstractions.Storage;
 using RevEx.Domain.Entities;
 using ContentEntity = RevEx.Domain.Entities.Content;
@@ -8,212 +7,116 @@ namespace RevEx.Infrastructure.Data;
 
 public static class InitialDataSeeder
 {
-    private const string DefaultCategoryName = "Общие";
-    private const string DefaultContentName = "Добро пожаловать в RevEx";
-    private const string DoorContentName = "Дверь с остеклением и нажимной пластиной";
-    private const string DoorFileName = "Door-Single-Glass-Push-Plate.rfa";
-    private const string DoorResourceName = "RevEx.SeedFiles.Door-Single-Glass-Push-Plate.rfa";
-
     public static async Task SeedAsync(
-        AppDbContext dbContext,
+        IRepository<Category> categories,
+        IRepository<ContentStatus> statuses,
+        IRepository<TagGroup> tagGroups,
+        IRepository<ContentEntity> contents,
+        IRepository<ContentVersion> versions,
+        IRepository<ContentFile> files,
         IFileStorage fileStorage,
+        IUnitOfWork unitOfWork,
         CancellationToken cancellationToken = default)
     {
-        await dbContext.Database.EnsureCreatedAsync(cancellationToken);
-        var bytes = Encoding.UTF8.GetBytes(
-            "RevEx\n\nЭто стартовый файл для версии 1.0.0.\n");
-
-        var category = await dbContext.Categories
-            .FirstOrDefaultAsync(item => item.Name == DefaultCategoryName, cancellationToken);
-
+        var category = (await categories.GetAllAsync(cancellationToken)).FirstOrDefault(x => x.Name == "Общие");
         if (category is null)
-        {
-            category = new Category { Name = DefaultCategoryName };
-            dbContext.Categories.Add(category);
-        }
+            category = await categories.AddAsync(new Category { Name = "Общие" }, cancellationToken);
 
-        var status = await dbContext.ContentStatuses
-            .FirstOrDefaultAsync(item => item.Name == "draft", cancellationToken);
-
+        var status = (await statuses.GetAllAsync(cancellationToken)).FirstOrDefault(x => x.Name == "draft");
         if (status is null)
-        {
-            status = new ContentStatus { Name = "draft" };
-            dbContext.ContentStatuses.Add(status);
-        }
+            status = await statuses.AddAsync(new ContentStatus { Name = "draft" }, cancellationToken);
 
-        var content = await dbContext.Contents
-            .FirstOrDefaultAsync(
-                item => item.CategoryId == category.Id && item.Name == DefaultContentName,
-                cancellationToken);
+        if (!(await tagGroups.GetAllAsync(cancellationToken)).Any(x => x.Name == "Общие"))
+            await tagGroups.AddAsync(new TagGroup { Name = "Общие" }, cancellationToken);
 
-        if (content is null)
+        if (!(await contents.GetAllAsync(cancellationToken)).Any(x => x.Name == "Добро пожаловать в RevEx"))
         {
-            content = new ContentEntity
+            await contents.AddAsync(new ContentEntity
             {
-                Name = DefaultContentName,
+                Name = "Добро пожаловать в RevEx",
                 Description = "Стартовый контент, созданный автоматически при запуске приложения.",
+                CategoryId = category.Id,
                 Category = category,
+                ContentStatusId = status.Id,
                 ContentStatus = status
-            };
-            dbContext.Contents.Add(content);
+            }, cancellationToken);
         }
 
-        var version = await dbContext.ContentVersions
-            .Include(item => item.Files)
-            .FirstOrDefaultAsync(
-                item => item.ContentId == content.Id && item.Name == "1.0.0",
-                cancellationToken);
-
-        if (version is null)
+        const string doorName = "Дверь с остеклением и нажимной пластиной";
+        var door = (await contents.GetAllAsync(cancellationToken)).FirstOrDefault(x => x.Name == doorName);
+        if (door is null)
         {
-            version = new ContentVersion
+            door = await contents.AddAsync(new ContentEntity
             {
-                Content = content,
-                Name = "1.0.0",
-                Date = DateTimeOffset.UtcNow,
-                Status = "draft",
-                Application = "revit",
-                ApplicationVersion = "2026"
-            };
-            dbContext.ContentVersions.Add(version);
+                Name = doorName,
+                Description = "Демонстрационное семейство одностворчатой двери с большим остеклением и вертикальной нажимной пластиной.",
+                CategoryId = category.Id,
+                Category = category,
+                ContentStatusId = status.Id,
+                ContentStatus = status
+            }, cancellationToken);
         }
 
-        var file = version.Files.FirstOrDefault();
-        if (file is null)
-        {
-            file = new ContentFile
-            {
-                Url = "pending",
-                OriginalFileName = "RevEx-Welcome.txt",
-                Extension = ".txt",
-                SizeBytes = bytes.LongLength,
-                Role = "attachment",
-                ContentVersion = version
-            };
-            dbContext.Files.Add(file);
-            await dbContext.SaveChangesAsync(cancellationToken);
-
-            file.Url = $"/api/content-files/{file.Id}/content";
-            await dbContext.SaveChangesAsync(cancellationToken);
-        }
-        else
-        {
-            await dbContext.SaveChangesAsync(cancellationToken);
-        }
-
-        await using var stream = new MemoryStream(bytes, writable: false);
-        await fileStorage.SaveAsync(file.Id, stream, cancellationToken);
-
-        await SeedDoorAsync(dbContext, fileStorage, category, status, cancellationToken);
-    }
-
-    private static async Task SeedDoorAsync(
-        AppDbContext dbContext,
-        IFileStorage fileStorage,
-        Category category,
-        ContentStatus status,
-        CancellationToken cancellationToken)
-    {
         var doorBytes = await ReadEmbeddedDoorAsync(cancellationToken);
-        var content = await dbContext.Contents
-            .FirstOrDefaultAsync(
-                item => item.CategoryId == category.Id && item.Name == DoorContentName,
-                cancellationToken);
+        await SeedDoorVersionAsync(door.Id, "1.0.0", new DateTimeOffset(2025, 1, 15, 0, 0, 0, TimeSpan.Zero),
+            doorBytes, versions, files, fileStorage, cancellationToken);
+        await SeedDoorVersionAsync(door.Id, "2.0.0", new DateTimeOffset(2026, 1, 15, 0, 0, 0, TimeSpan.Zero),
+            doorBytes, versions, files, fileStorage, cancellationToken);
 
-        if (content is null)
-        {
-            content = new ContentEntity
-            {
-                Name = DoorContentName,
-                Description =
-                    "Демонстрационное семейство одностворчатой двери с большим остеклением " +
-                    "и вертикальной нажимной пластиной.",
-                Category = category,
-                ContentStatus = status
-            };
-            dbContext.Contents.Add(content);
-            await dbContext.SaveChangesAsync(cancellationToken);
-        }
-
-        await SeedDoorVersionAsync(
-            dbContext,
-            fileStorage,
-            content,
-            doorBytes,
-            "1.0.0",
-            new DateTimeOffset(2025, 1, 15, 0, 0, 0, TimeSpan.Zero),
-            cancellationToken);
-        await SeedDoorVersionAsync(
-            dbContext,
-            fileStorage,
-            content,
-            doorBytes,
-            "2.0.0",
-            new DateTimeOffset(2026, 1, 15, 0, 0, 0, TimeSpan.Zero),
-            cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
     }
 
     private static async Task SeedDoorVersionAsync(
-        AppDbContext dbContext,
+        int contentId,
+        string name,
+        DateTimeOffset date,
+        byte[] bytes,
+        IRepository<ContentVersion> versions,
+        IRepository<ContentFile> files,
         IFileStorage fileStorage,
-        ContentEntity content,
-        byte[] doorBytes,
-        string versionName,
-        DateTimeOffset versionDate,
         CancellationToken cancellationToken)
     {
-        var version = await dbContext.ContentVersions
-            .Include(item => item.Files)
-            .FirstOrDefaultAsync(
-                item => item.ContentId == content.Id && item.Name == versionName,
-                cancellationToken);
-
+        var version = (await versions.GetAllAsync(cancellationToken))
+            .FirstOrDefault(x => x.ContentId == contentId && x.Name == name);
         if (version is null)
         {
-            version = new ContentVersion
+            version = await versions.AddAsync(new ContentVersion
             {
-                Content = content,
-                Name = versionName,
-                Date = versionDate,
+                ContentId = contentId,
+                Name = name,
+                Date = date,
                 Status = "published",
                 Application = "revit",
                 ApplicationVersion = "2011"
-            };
-            dbContext.ContentVersions.Add(version);
+            }, cancellationToken);
         }
 
-        var file = version.Files.FirstOrDefault(item => item.Role == "primary");
+        var file = (await files.GetAllAsync(cancellationToken))
+            .FirstOrDefault(x => x.ContentVersionId == version.Id && x.Role == "primary");
         if (file is null)
         {
-            file = new ContentFile
+            file = await files.AddAsync(new ContentFile
             {
                 Url = "pending",
-                OriginalFileName = DoorFileName,
+                OriginalFileName = "Door-Single-Glass-Push-Plate.rfa",
                 Extension = ".rfa",
-                SizeBytes = doorBytes.LongLength,
+                SizeBytes = bytes.LongLength,
                 Role = "primary",
-                ContentVersion = version
-            };
-            dbContext.Files.Add(file);
-            await dbContext.SaveChangesAsync(cancellationToken);
-
+                ContentVersionId = version.Id
+            }, cancellationToken);
             file.Url = $"/api/content-files/{file.Id}/content";
-            await dbContext.SaveChangesAsync(cancellationToken);
-        }
-        else
-        {
-            await dbContext.SaveChangesAsync(cancellationToken);
+            await files.UpdateAsync(file, cancellationToken);
         }
 
-        await using var stream = new MemoryStream(doorBytes, writable: false);
+        await using var stream = new MemoryStream(bytes, writable: false);
         await fileStorage.SaveAsync(file.Id, stream, cancellationToken);
     }
 
     private static async Task<byte[]> ReadEmbeddedDoorAsync(CancellationToken cancellationToken)
     {
         await using var source = typeof(InitialDataSeeder).Assembly
-            .GetManifestResourceStream(DoorResourceName)
-            ?? throw new InvalidOperationException($"Embedded seed file '{DoorResourceName}' was not found.");
+            .GetManifestResourceStream("RevEx.SeedFiles.Door-Single-Glass-Push-Plate.rfa")
+            ?? throw new InvalidOperationException("Embedded seed Revit file was not found.");
         await using var destination = new MemoryStream();
         await source.CopyToAsync(destination, cancellationToken);
         return destination.ToArray();

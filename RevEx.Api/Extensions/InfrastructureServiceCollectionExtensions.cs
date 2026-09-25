@@ -12,8 +12,8 @@ public static class InfrastructureServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        services.AddScoped(typeof(IRepository<>), typeof(EfRepository<>));
-        services.AddScoped<IUnitOfWork, EfUnitOfWork>();
+        services.AddScoped(typeof(IRepository<>), typeof(MongoRepository<>));
+        services.AddScoped<IUnitOfWork, MongoUnitOfWork>();
 
         var options = configuration
             .GetRequiredSection(FileStorageOptions.SectionName)

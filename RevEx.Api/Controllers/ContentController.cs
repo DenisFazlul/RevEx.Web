@@ -107,6 +107,7 @@ public sealed class ContentController(
             Category = category,
             ContentStatusId = status.Id,
             ContentStatus = status,
+            TagIds = tags.Select(tag => tag.Id).ToArray(),
             Tags = tags
         };
 
@@ -168,6 +169,7 @@ public sealed class ContentController(
         entity.ContentStatus = status;
         if (tags is not null)
         {
+            entity.TagIds = tags.Select(tag => tag.Id).ToArray();
             entity.Tags.Clear();
             foreach (var tag in tags)
             {

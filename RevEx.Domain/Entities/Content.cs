@@ -8,6 +8,7 @@ public sealed class Content : AuditableEntity
     public int CategoryId { get; set; }
     public int ContentStatusId { get; set; }
     public int? PreviewFileId { get; set; }
+    public ICollection<int> TagIds { get; set; } = [];
     public Category Category { get; set; } = null!;
     public ContentStatus ContentStatus { get; set; } = null!;
     public ContentFile? PreviewFile { get; set; }

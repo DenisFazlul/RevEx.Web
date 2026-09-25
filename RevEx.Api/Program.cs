@@ -7,7 +7,7 @@ builder.Services
     .AddApiSwagger(builder.Configuration)
     .AddConfiguredAuthentication(builder.Configuration)
     .AddFrontendCors()
-    .AddDatabase()
+    .AddDatabase(builder.Configuration)
     .AddInfrastructureServices(builder.Configuration);
 
 var app = builder.Build();
