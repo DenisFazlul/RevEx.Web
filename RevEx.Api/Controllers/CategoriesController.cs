@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using RevEx.Api.Authorization;
 using RevEx.Application.Abstractions.Persistence;
 using RevEx.Application.DTOs.Category;
 using RevEx.Domain.Entities;
@@ -34,6 +36,7 @@ public sealed class CategoriesController(
     }
 
     [HttpPost]
+    [Authorize(Policy = RevExPolicies.AdministerCatalog)]
     [ProducesResponseType<CategoryDto>(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<CategoryDto>> Create(
@@ -54,6 +57,7 @@ public sealed class CategoriesController(
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Policy = RevExPolicies.AdministerCatalog)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -85,6 +89,7 @@ public sealed class CategoriesController(
     }
 
     [HttpDelete("{id:int}")]
+    [Authorize(Policy = RevExPolicies.AdministerCatalog)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]

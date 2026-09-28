@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Server.IISIntegration;
 using Microsoft.IdentityModel.Tokens;
+using RevEx.Api.Authorization;
 
 namespace RevEx.Api.Extensions;
 
@@ -31,7 +32,12 @@ public static class AuthenticationServiceCollectionExtensions
         {
             options.FallbackPolicy = new AuthorizationPolicyBuilder()
                 .RequireAuthenticatedUser()
+                .RequireRole(RevExRoles.User, RevExRoles.Moderator, RevExRoles.Administrator)
                 .Build();
+            options.AddPolicy(RevExPolicies.EditContent, policy => policy
+                .RequireRole(RevExRoles.Moderator, RevExRoles.Administrator));
+            options.AddPolicy(RevExPolicies.AdministerCatalog, policy => policy
+                .RequireRole(RevExRoles.Administrator));
         });
 
         return services;
@@ -53,6 +59,7 @@ public static class AuthenticationServiceCollectionExtensions
             .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
+                options.MapInboundClaims = false;
                 options.Authority = authority;
                 options.Audience = audience;
 
@@ -68,7 +75,8 @@ public static class AuthenticationServiceCollectionExtensions
                     ValidateIssuer = true,
                     ValidIssuer = authority,
                     ValidateAudience = true,
-                    ValidAudience = audience
+                    ValidAudience = audience,
+                    RoleClaimType = "roles"
                 };
             });
     }

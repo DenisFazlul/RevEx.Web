@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using RevEx.Api.Authorization;
 using RevEx.Api.Models;
 using RevEx.Application.Abstractions.Persistence;
 using RevEx.Application.Abstractions.Storage;
@@ -48,6 +50,7 @@ public sealed class ContentVersionsController(
     }
 
     [HttpPost]
+    [Authorize(Policy = RevExPolicies.EditContent)]
     [ProducesResponseType<ContentVersionDto>(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -80,6 +83,7 @@ public sealed class ContentVersionsController(
     }
 
     [HttpPost("{id:int}/file")]
+    [Authorize(Policy = RevExPolicies.EditContent)]
     [Consumes("multipart/form-data")]
     [ProducesResponseType<ContentVersionDto>(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -154,6 +158,7 @@ public sealed class ContentVersionsController(
     }
 
     [HttpDelete("{id:int}/files/{fileId:int}")]
+    [Authorize(Policy = RevExPolicies.EditContent)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> DeleteFile(
@@ -182,6 +187,7 @@ public sealed class ContentVersionsController(
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Policy = RevExPolicies.EditContent)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -212,6 +218,7 @@ public sealed class ContentVersionsController(
     }
 
     [HttpDelete("{id:int}")]
+    [Authorize(Policy = RevExPolicies.EditContent)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)

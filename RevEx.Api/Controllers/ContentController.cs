@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using RevEx.Api.Authorization;
 using RevEx.Api.Models;
 using RevEx.Application.Abstractions.Persistence;
 using RevEx.Application.Abstractions.Storage;
@@ -69,6 +71,7 @@ public sealed class ContentController(
     }
 
     [HttpPost]
+    [Authorize(Policy = RevExPolicies.EditContent)]
     [ProducesResponseType<ContentDto>(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -119,6 +122,7 @@ public sealed class ContentController(
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Policy = RevExPolicies.EditContent)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -182,6 +186,7 @@ public sealed class ContentController(
     }
 
     [HttpDelete("{id:int}")]
+    [Authorize(Policy = RevExPolicies.EditContent)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)
@@ -208,6 +213,7 @@ public sealed class ContentController(
     }
 
     [HttpPost("{id:int}/preview")]
+    [Authorize(Policy = RevExPolicies.EditContent)]
     [Consumes("multipart/form-data")]
     [ProducesResponseType<ContentDto>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -270,6 +276,7 @@ public sealed class ContentController(
     }
 
     [HttpDelete("{id:int}/preview")]
+    [Authorize(Policy = RevExPolicies.EditContent)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> DeletePreview(int id, CancellationToken cancellationToken)

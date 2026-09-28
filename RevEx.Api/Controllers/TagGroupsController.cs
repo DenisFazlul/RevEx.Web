@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using RevEx.Api.Authorization;
 using RevEx.Application.Abstractions.Persistence;
 using RevEx.Application.DTOs.Tag;
 using RevEx.Domain.Entities;
@@ -27,6 +29,7 @@ public sealed class TagGroupsController(
     }
 
     [HttpPost]
+    [Authorize(Policy = RevExPolicies.AdministerCatalog)]
     public async Task<ActionResult<TagGroupDto>> Create(CreateTagGroupDto request, CancellationToken cancellationToken)
     {
         var name = request.Name.Trim();
@@ -41,6 +44,7 @@ public sealed class TagGroupsController(
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Policy = RevExPolicies.AdministerCatalog)]
     public async Task<IActionResult> Update(int id, UpdateTagGroupDto request, CancellationToken cancellationToken)
     {
         var name = request.Name.Trim();
@@ -57,6 +61,7 @@ public sealed class TagGroupsController(
     }
 
     [HttpDelete("{id:int}")]
+    [Authorize(Policy = RevExPolicies.AdministerCatalog)]
     public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)
     {
         var entity = await repository.GetByIdAsync(id, cancellationToken);

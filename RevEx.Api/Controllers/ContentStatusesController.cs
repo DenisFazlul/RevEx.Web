@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using RevEx.Api.Authorization;
 using RevEx.Application.Abstractions.Persistence;
 using RevEx.Application.DTOs.ContentStatus;
 using RevEx.Domain.Entities;
@@ -28,6 +30,7 @@ public sealed class ContentStatusesController(
     }
 
     [HttpPost]
+    [Authorize(Policy = RevExPolicies.AdministerCatalog)]
     public async Task<ActionResult<ContentStatusDto>> Create(
         CreateContentStatusDto request,
         CancellationToken cancellationToken)
@@ -51,6 +54,7 @@ public sealed class ContentStatusesController(
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Policy = RevExPolicies.AdministerCatalog)]
     public async Task<IActionResult> Update(
         int id,
         UpdateContentStatusDto request,
@@ -81,6 +85,7 @@ public sealed class ContentStatusesController(
     }
 
     [HttpDelete("{id:int}")]
+    [Authorize(Policy = RevExPolicies.AdministerCatalog)]
     public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)
     {
         var entity = await repository.GetByIdAsync(id, cancellationToken);
