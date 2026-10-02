@@ -18,6 +18,7 @@ public sealed class ContentController(
     IRepository<ContentStatus> statusRepository,
     IRepository<Tag> tagRepository,
     IRepository<ContentFile> fileRepository,
+    IRepository<ContentVersion> versionRepository,
     IFileStorage fileStorage,
     IUnitOfWork unitOfWork) : ControllerBase
 {
@@ -197,10 +198,29 @@ public sealed class ContentController(
             return NotFound();
         }
 
+        var versions = await versionRepository.GetAllAsync(cancellationToken);
+        var ownedFiles = versions
+            .Where(version => version.ContentId == id)
+            .SelectMany(version => version.Files)
+            .ToList();
+
         if (entity.PreviewFileId is int previewFileId)
         {
-            await fileStorage.DeleteAsync(previewFileId, cancellationToken);
             var previewFile = await fileRepository.GetByIdAsync(previewFileId, cancellationToken);
+            if (previewFile is not null)
+            {
+                ownedFiles.Add(previewFile);
+            }
+        }
+
+        foreach (var file in ownedFiles.DistinctBy(file => file.Id))
+        {
+            await fileStorage.DeleteAsync(file.Id, cancellationToken);
+        }
+
+        if (entity.PreviewFileId is int fileId)
+        {
+            var previewFile = ownedFiles.FirstOrDefault(file => file.Id == fileId);
             if (previewFile is not null)
             {
                 await fileRepository.DeleteAsync(previewFile, cancellationToken);
@@ -249,17 +269,27 @@ public sealed class ContentController(
         await fileRepository.AddAsync(previewFile, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
-        await using (var stream = request.File.OpenReadStream())
+        try
         {
-            await fileStorage.SaveAsync(previewFile.Id, stream, cancellationToken);
-        }
+            await using (var stream = request.File.OpenReadStream())
+            {
+                await fileStorage.SaveAsync(previewFile.Id, stream, cancellationToken);
+            }
 
-        previewFile.Url = $"/api/content-files/{previewFile.Id}/content";
-        entity.PreviewFileId = previewFile.Id;
-        entity.PreviewFile = previewFile;
-        await fileRepository.UpdateAsync(previewFile, cancellationToken);
-        await repository.UpdateAsync(entity, cancellationToken);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
+            previewFile.Url = $"/api/content-files/{previewFile.Id}/content";
+            entity.PreviewFileId = previewFile.Id;
+            entity.PreviewFile = previewFile;
+            await fileRepository.UpdateAsync(previewFile, cancellationToken);
+            await repository.UpdateAsync(entity, cancellationToken);
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+        catch
+        {
+            await fileStorage.DeleteAsync(previewFile.Id, CancellationToken.None);
+            await fileRepository.DeleteAsync(previewFile, CancellationToken.None);
+            await unitOfWork.SaveChangesAsync(CancellationToken.None);
+            throw;
+        }
 
         if (oldFileId is int previousId)
         {

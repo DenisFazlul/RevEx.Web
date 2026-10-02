@@ -16,6 +16,33 @@ public sealed class MongoRepository<TEntity>(MongoDbContext context) : IReposito
     public async Task<IReadOnlyCollection<TEntity>> GetAllAsync(CancellationToken cancellationToken)
     {
         var entities = await _collection.Find(FilterDefinition<TEntity>.Empty).ToListAsync(cancellationToken);
+
+        if (typeof(TEntity) == typeof(ContentEntity))
+        {
+            var contents = entities.Cast<ContentEntity>().ToList();
+            var tagIds = contents
+                .SelectMany(content => content.TagIds)
+                .Distinct()
+                .ToArray();
+
+            var tags = tagIds.Length == 0
+                ? []
+                : await context.Collection<DomainTag>()
+                    .Find(Builders<DomainTag>.Filter.In(tag => tag.Id, tagIds))
+                    .ToListAsync(cancellationToken);
+            var tagsById = tags.ToDictionary(tag => tag.Id);
+
+            foreach (var content in contents)
+            {
+                content.Tags = content.TagIds
+                    .Where(tagsById.ContainsKey)
+                    .Select(id => tagsById[id])
+                    .ToList();
+            }
+
+            return entities;
+        }
+
         foreach (var entity in entities) await HydrateAsync(entity, cancellationToken);
         return entities;
     }
