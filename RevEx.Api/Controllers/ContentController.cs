@@ -19,6 +19,7 @@ public sealed class ContentController(
     IRepository<Tag> tagRepository,
     IRepository<ContentFile> fileRepository,
     IRepository<ContentVersion> versionRepository,
+    IContentHistoryStore historyStore,
     IFileStorage fileStorage,
     IUnitOfWork unitOfWork) : ControllerBase
 {
@@ -117,6 +118,13 @@ public sealed class ContentController(
 
         await repository.AddAsync(entity, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
+        await historyStore.AddAsync(
+            entity.Id,
+            $"Контент создан. Название: {Quote(entity.Name)}; описание: {Quote(entity.Description)}; " +
+            $"категория: {Quote(category.Name)}; статус: {Quote(status.Name)}; " +
+            $"теги: {FormatTags(tags)}.",
+            ContentHistoryController.ResolveAuthor(User),
+            cancellationToken);
 
         var result = Map(entity);
         return CreatedAtAction(nameof(GetById), new { id = entity.Id }, result);
@@ -166,8 +174,18 @@ public sealed class ContentController(
             }
         }
 
-        entity.Name = request.Name.Trim();
-        entity.Description = request.Description.Trim();
+        var name = request.Name.Trim();
+        var description = request.Description.Trim();
+        var historyDescription = BuildUpdateHistoryDescription(
+            entity,
+            name,
+            description,
+            category,
+            status,
+            tags);
+
+        entity.Name = name;
+        entity.Description = description;
         entity.CategoryId = category.Id;
         entity.Category = category;
         entity.ContentStatusId = status.Id;
@@ -183,6 +201,14 @@ public sealed class ContentController(
         }
         await repository.UpdateAsync(entity, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
+        if (historyDescription is not null)
+        {
+            await historyStore.AddAsync(
+                entity.Id,
+                historyDescription,
+                ContentHistoryController.ResolveAuthor(User),
+                cancellationToken);
+        }
         return NoContent();
     }
 
@@ -229,6 +255,14 @@ public sealed class ContentController(
 
         await repository.DeleteAsync(entity, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
+        await historyStore.AddAsync(
+            id,
+            $"Контент удалён. Название: {Quote(entity.Name)}; описание: {Quote(entity.Description)}; " +
+            $"категория: {Quote(entity.Category?.Name ?? entity.CategoryId.ToString())}; " +
+            $"статус: {Quote(entity.ContentStatus?.Name ?? entity.ContentStatusId.ToString())}; " +
+            $"теги: {FormatTags(entity.Tags)}.",
+            ContentHistoryController.ResolveAuthor(User),
+            cancellationToken);
         return NoContent();
     }
 
@@ -258,6 +292,9 @@ public sealed class ContentController(
         }
 
         var oldFileId = entity.PreviewFileId;
+        var oldPreviewFile = oldFileId is int existingPreviewId
+            ? await fileRepository.GetByIdAsync(existingPreviewId, cancellationToken)
+            : null;
         var previewFile = new ContentFile
         {
             Url = "pending",
@@ -302,6 +339,13 @@ public sealed class ContentController(
             }
         }
 
+        await historyStore.AddAsync(
+            entity.Id,
+            $"Изображение контента изменено: {Quote(oldPreviewFile?.OriginalFileName ?? "не задано")} → " +
+            $"{Quote(previewFile.OriginalFileName)}.",
+            ContentHistoryController.ResolveAuthor(User),
+            cancellationToken);
+
         return Ok(Map(entity));
     }
 
@@ -322,6 +366,7 @@ public sealed class ContentController(
             return NoContent();
         }
 
+        var oldPreviewFile = await fileRepository.GetByIdAsync(fileId, cancellationToken);
         entity.PreviewFileId = null;
         entity.PreviewFile = null;
         await repository.UpdateAsync(entity, cancellationToken);
@@ -333,6 +378,13 @@ public sealed class ContentController(
             await fileRepository.DeleteAsync(file, cancellationToken);
             await unitOfWork.SaveChangesAsync(cancellationToken);
         }
+
+        await historyStore.AddAsync(
+            entity.Id,
+            $"Изображение контента изменено: {Quote(oldPreviewFile?.OriginalFileName ?? $"файл #{fileId}")} → " +
+            $"{Quote("не задано")}.",
+            ContentHistoryController.ResolveAuthor(User),
+            cancellationToken);
 
         return NoContent();
     }
@@ -355,6 +407,65 @@ public sealed class ContentController(
         }
 
         return tags;
+    }
+
+    private static string? BuildUpdateHistoryDescription(
+        ContentEntity entity,
+        string name,
+        string description,
+        Category category,
+        ContentStatus status,
+        ICollection<Tag>? tags)
+    {
+        var changes = new List<string>();
+
+        if (!string.Equals(entity.Name, name, StringComparison.Ordinal))
+        {
+            changes.Add($"название: {Quote(entity.Name)} → {Quote(name)}");
+        }
+
+        if (!string.Equals(entity.Description, description, StringComparison.Ordinal))
+        {
+            changes.Add($"описание: {Quote(entity.Description)} → {Quote(description)}");
+        }
+
+        if (entity.CategoryId != category.Id)
+        {
+            changes.Add($"категория изменена: {Quote(entity.Category?.Name ?? entity.CategoryId.ToString())} → {Quote(category.Name)}");
+        }
+
+        if (entity.ContentStatusId != status.Id)
+        {
+            changes.Add($"статус: {Quote(entity.ContentStatus?.Name ?? entity.ContentStatusId.ToString())} → {Quote(status.Name)}");
+        }
+
+        if (tags is not null)
+        {
+            var oldTagIds = entity.TagIds.ToHashSet();
+            var newTagIds = tags.Select(tag => tag.Id).ToHashSet();
+            var addedTags = tags.Where(tag => !oldTagIds.Contains(tag.Id)).Select(tag => tag.Name).OrderBy(name => name).ToArray();
+            var removedTags = entity.Tags.Where(tag => !newTagIds.Contains(tag.Id)).Select(tag => tag.Name).OrderBy(name => name).ToArray();
+
+            if (addedTags.Length > 0)
+            {
+                changes.AddRange(addedTags.Select(tagName => $"добавлен тег {Quote(tagName)}"));
+            }
+
+            if (removedTags.Length > 0)
+            {
+                changes.AddRange(removedTags.Select(tagName => $"удален тег {Quote(tagName)}"));
+            }
+        }
+
+        return changes.Count == 0 ? null : $"Контент изменён. {string.Join("; ", changes)}.";
+    }
+
+    private static string Quote(string value) => $"«{value}»";
+
+    private static string FormatTags(IEnumerable<Tag> tags)
+    {
+        var names = tags.Select(tag => tag.Name).OrderBy(name => name).Select(Quote).ToArray();
+        return names.Length == 0 ? Quote("нет") : string.Join(", ", names);
     }
 
     private static ContentDto Map(ContentEntity entity) =>
