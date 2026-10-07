@@ -1,0 +1,26 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+[Aa]rtifacts/
+packages/
+*.nupkg
+
+# IDE and user settings
+.idea/
+.vs/
+*.user
+*.suo
+*.userprefs
+*.DotSettings.user
+*.rsuser
+riderModule.iml
+_ReSharper.Caches/
+
+# Test output
+TestResults/
+coverage/
+coverage.*
+
+# OS files
+.DS_Store
+Thumbs.db
