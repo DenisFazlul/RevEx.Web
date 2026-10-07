@@ -1,36 +1,19 @@
-# Build output
-[Bb]in/
-[Oo]bj/
-[Aa]rtifacts/
-dist/
-node_modules/
-packages/
-*.nupkg
-*.tsbuildinfo
-
-# Local environment and secrets
+/Backend/
+**/node_modules/
+**/dist/
+**/bin/
+**/obj/
+**/*.tsbuildinfo
 .env
 .env.*
 !.env.example
-appsettings.*.json
-!appsettings.json
-
-# IDE and user settings
-.idea/
-.vs/
-*.user
-*.suo
-*.userprefs
-*.DotSettings.user
-*.rsuser
-riderModule.iml
-_ReSharper.Caches/
-
-# Test output
-TestResults/
-coverage/
-coverage.*
-
-# OS files
+**/.env
+**/.env.*
+!**/.env.example
 .DS_Store
-Thumbs.db
+**/.DS_Store
+**/artifacts/
+**/storage/
+**/*.pfx
+**/*.p12
+**/*.key
