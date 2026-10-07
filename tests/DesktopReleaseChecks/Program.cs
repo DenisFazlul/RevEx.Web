@@ -61,6 +61,17 @@ try
         await File.WriteAllBytesAsync(args[1], fixture.ToArray());
         Console.WriteLine("Test-only fixture created (not a runnable desktop installer).");
     }
+    if (args.Length == 2 && args[0] == "--validate-archive")
+    {
+        var actual = new FileDesktopReleaseStore(new() { Path = Path.Combine(root, "actual") });
+        await using var input = File.OpenRead(args[1]);
+        var record = await actual.UploadAsync(input, ct);
+        var version = record.Manifest.Version;
+        await actual.ActivateAsync(new(version, version, version), ct);
+        Check((await actual.GetActiveAsync(ct))?.RecommendedDesktopVersion == version, "Real CI archive accepted and activated in isolated storage");
+        foreach (var installer in record.Manifest.Installers)
+            Check(await actual.GetPublicFileAsync(version, installer.Value, ct) != null, "Real installer available: " + installer.Key);
+    }
 }
 finally { Directory.Delete(root, recursive: true); }
 
