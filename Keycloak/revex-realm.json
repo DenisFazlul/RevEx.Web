@@ -1,0 +1,148 @@
+{
+  "realm": "revex",
+  "enabled": true,
+  "displayName": "RevEx",
+  "loginTheme": "revex",
+  "internationalizationEnabled": true,
+  "supportedLocales": [
+    "ru"
+  ],
+  "defaultLocale": "ru",
+  "accessTokenLifespan": 3600,
+  "roles": {
+    "realm": [
+      {
+        "name": "user",
+        "description": "Read-only access to the RevEx catalog",
+        "composite": false
+      },
+      {
+        "name": "moderator",
+        "description": "Can create and edit content, versions and files",
+        "composite": true,
+        "composites": {
+          "realm": [
+            "user"
+          ]
+        }
+      },
+      {
+        "name": "administrator",
+        "description": "Full RevEx access, including catalog dictionaries",
+        "composite": true,
+        "composites": {
+          "realm": [
+            "moderator"
+          ]
+        }
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "revex-api",
+      "name": "RevEx API",
+      "enabled": true,
+      "bearerOnly": true,
+      "protocol": "openid-connect"
+    },
+    {
+      "clientId": "revex-desktop",
+      "name": "RevEx Desktop",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "protocol": "openid-connect",
+      "redirectUris": [
+        "http://127.0.0.1:7890/"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "revex-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "revex-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        },
+        {
+          "name": "revex-realm-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "multivalued": "true",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "roles",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "enabled": true,
+      "email": "admin@example.local",
+      "emailVerified": true,
+      "firstName": "RevEx",
+      "lastName": "Administrator",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${REVEX_ADMIN_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "administrator"
+      ]
+    },
+    {
+      "username": "user",
+      "enabled": true,
+      "email": "user@example.local",
+      "emailVerified": true,
+      "firstName": "Base",
+      "lastName": "User",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${REVEX_USER_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "user"
+      ]
+    },
+    {
+      "username": "moder",
+      "enabled": true,
+      "email": "moder@example.local",
+      "emailVerified": true,
+      "firstName": "Content",
+      "lastName": "Moderator",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${REVEX_MODERATOR_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "moderator"
+      ]
+    }
+  ]
+}

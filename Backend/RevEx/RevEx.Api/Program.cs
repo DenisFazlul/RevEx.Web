@@ -12,6 +12,7 @@ builder.Services
 
 var app = builder.Build();
 
+await app.InitializeContentHistoryAsync();
 await app.SeedInitialDataAsync();
 
 app.UseApiSwagger();

@@ -1,3 +1,4 @@
+using RevEx.Application.Abstractions.Persistence;
 using RevEx.Infrastructure.Persistence;
 
 namespace RevEx.Api.Extensions;
@@ -10,6 +11,9 @@ public static class DatabaseServiceCollectionExtensions
     {
         services.Configure<MongoDbOptions>(configuration.GetRequiredSection(MongoDbOptions.SectionName));
         services.AddSingleton<MongoDbContext>();
+        services.Configure<ContentHistoryOptions>(
+            configuration.GetRequiredSection(ContentHistoryOptions.SectionName));
+        services.AddSingleton<IContentHistoryStore, PostgresContentHistoryStore>();
 
         return services;
     }

@@ -16,6 +16,7 @@ public sealed class ContentVersionsController(
     IRepository<ContentEntity> contentRepository,
     IRepository<ContentVersion> versionRepository,
     IRepository<ContentFile> fileRepository,
+    IContentHistoryStore historyStore,
     IUnitOfWork unitOfWork,
     IFileStorage fileStorage) : ControllerBase
 {
@@ -77,6 +78,13 @@ public sealed class ContentVersionsController(
 
         await versionRepository.AddAsync(entity, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
+        await historyStore.AddAsync(
+            entity.ContentId,
+            $"Версия создана. Название: {Quote(entity.Name)}; дата: {Quote(FormatDate(entity.Date))}; " +
+            $"статус: {Quote(entity.Status)}; приложение: {Quote(entity.Application)}; " +
+            $"версия приложения: {Quote(entity.ApplicationVersion)}.",
+            ContentHistoryController.ResolveAuthor(User),
+            cancellationToken);
 
         var result = Map(entity);
         return CreatedAtAction(nameof(GetById), new { id = entity.Id }, result);
@@ -154,6 +162,13 @@ public sealed class ContentVersionsController(
             throw;
         }
 
+        await historyStore.AddAsync(
+            version.ContentId,
+            $"Файл версии {Quote(version.Name)} изменён: {Quote("не задано")} → {Quote(originalFileName)}; " +
+            $"роль: {Quote(role)}; размер: {request.File.Length} байт.",
+            ContentHistoryController.ResolveAuthor(User),
+            cancellationToken);
+
         return CreatedAtAction(nameof(GetById), new { id = version.Id }, Map(version));
     }
 
@@ -183,6 +198,12 @@ public sealed class ContentVersionsController(
         await fileRepository.DeleteAsync(file, cancellationToken);
         await versionRepository.UpdateAsync(version, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
+        await historyStore.AddAsync(
+            version.ContentId,
+            $"Файл версии {Quote(version.Name)} изменён: {Quote(file.OriginalFileName)} → {Quote("удалён")}; " +
+            $"роль: {Quote(file.Role)}; размер: {file.SizeBytes} байт.",
+            ContentHistoryController.ResolveAuthor(User),
+            cancellationToken);
         return NoContent();
     }
 
@@ -207,13 +228,32 @@ public sealed class ContentVersionsController(
             return NotFound();
         }
 
-        version.Name = request.Name.Trim();
+        var name = request.Name.Trim();
+        var application = request.Application.Trim().ToLowerInvariant();
+        var applicationVersion = request.ApplicationVersion.Trim();
+        var historyDescription = BuildUpdateHistoryDescription(
+            version,
+            name,
+            request.Date,
+            request.Status,
+            application,
+            applicationVersion);
+
+        version.Name = name;
         version.Date = request.Date;
         version.Status = request.Status;
-        version.Application = request.Application.Trim().ToLowerInvariant();
-        version.ApplicationVersion = request.ApplicationVersion.Trim();
+        version.Application = application;
+        version.ApplicationVersion = applicationVersion;
         await versionRepository.UpdateAsync(version, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
+        if (historyDescription is not null)
+        {
+            await historyStore.AddAsync(
+                version.ContentId,
+                historyDescription,
+                ContentHistoryController.ResolveAuthor(User),
+                cancellationToken);
+        }
         return NoContent();
     }
 
@@ -237,8 +277,49 @@ public sealed class ContentVersionsController(
 
         await versionRepository.DeleteAsync(version, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
+        await historyStore.AddAsync(
+            version.ContentId,
+            $"Версия удалена. Название: {Quote(version.Name)}; дата: {Quote(FormatDate(version.Date))}; " +
+            $"статус: {Quote(version.Status)}; приложение: {Quote(version.Application)}; " +
+            $"версия приложения: {Quote(version.ApplicationVersion)}; файлов: {version.Files.Count}.",
+            ContentHistoryController.ResolveAuthor(User),
+            cancellationToken);
         return NoContent();
     }
+
+    private static string? BuildUpdateHistoryDescription(
+        ContentVersion version,
+        string name,
+        DateTimeOffset date,
+        string status,
+        string application,
+        string applicationVersion)
+    {
+        var changes = new List<string>();
+        AddChange(changes, "название", version.Name, name);
+
+        if (version.Date != date)
+            changes.Add($"дата: {Quote(FormatDate(version.Date))} → {Quote(FormatDate(date))}");
+
+        AddChange(changes, "статус", version.Status, status);
+        AddChange(changes, "приложение", version.Application, application);
+        AddChange(changes, "версия приложения", version.ApplicationVersion, applicationVersion);
+
+        return changes.Count == 0
+            ? null
+            : $"Версия {Quote(version.Name)} изменена. {string.Join("; ", changes)}.";
+    }
+
+    private static void AddChange(ICollection<string> changes, string field, string oldValue, string newValue)
+    {
+        if (!string.Equals(oldValue, newValue, StringComparison.Ordinal))
+            changes.Add($"{field}: {Quote(oldValue)} → {Quote(newValue)}");
+    }
+
+    private static string FormatDate(DateTimeOffset value) =>
+        value.ToUniversalTime().ToString("dd.MM.yyyy HH:mm:ss 'UTC'");
+
+    private static string Quote(string value) => $"«{value}»";
 
     private static ContentVersionDto Map(ContentVersion entity) =>
         new(

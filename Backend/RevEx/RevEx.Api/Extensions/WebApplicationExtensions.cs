@@ -8,6 +8,13 @@ namespace RevEx.Api.Extensions;
 
 public static class WebApplicationExtensions
 {
+    public static async Task InitializeContentHistoryAsync(this WebApplication app)
+    {
+        await using var scope = app.Services.CreateAsyncScope();
+        var store = scope.ServiceProvider.GetRequiredService<IContentHistoryStore>();
+        await store.InitializeAsync();
+    }
+
     public static async Task SeedInitialDataAsync(this WebApplication app)
     {
         await using var scope = app.Services.CreateAsyncScope();

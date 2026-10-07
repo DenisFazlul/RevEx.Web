@@ -1,0 +1,92 @@
+services:
+  mongodb:
+    image: mongo:8.0
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  history-postgres:
+    image: postgres:17-alpine
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-revex_history}
+      POSTGRES_USER: ${POSTGRES_USER:-revex}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - content-history-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.3
+    command: start-dev --import-realm
+    ports:
+      - "8081:8080"
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:?Set KEYCLOAK_ADMIN_USERNAME in .env}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?Set KEYCLOAK_ADMIN_PASSWORD in .env}
+      REVEX_ADMIN_PASSWORD: ${REVEX_ADMIN_PASSWORD:?Set REVEX_ADMIN_PASSWORD in .env}
+      REVEX_USER_PASSWORD: ${REVEX_USER_PASSWORD:?Set REVEX_USER_PASSWORD in .env}
+      REVEX_MODERATOR_PASSWORD: ${REVEX_MODERATOR_PASSWORD:?Set REVEX_MODERATOR_PASSWORD in .env}
+      KC_HOSTNAME: http://localhost:8081
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+    volumes:
+      - ./Keycloak/revex-realm.json:/opt/keycloak/data/import/revex-realm.json:ro
+      - ./Keycloak/themes:/opt/keycloak/themes:ro
+    restart: unless-stopped
+
+  revex-api:
+    build:
+      context: ./Backend/RevEx
+      dockerfile: RevEx.Api/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      Authentication__Provider: Keycloak
+      Authentication__Providers__Keycloak__Authority: http://localhost:8081/realms/revex
+      Authentication__Providers__Keycloak__MetadataAddress: http://keycloak:8080/realms/revex/.well-known/openid-configuration
+      Authentication__Providers__Keycloak__Audience: revex-api
+      Authentication__Providers__Keycloak__RequireHttpsMetadata: "false"
+      MongoDb__ConnectionString: mongodb://mongodb:27017
+      MongoDb__DatabaseName: revex
+      ContentHistory__ConnectionString: Host=history-postgres;Port=5432;Database=${POSTGRES_DB:-revex_history};Username=${POSTGRES_USER:-revex};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      FileStorage__Provider: NetworkFolder
+      FileStorage__NetworkFolder__Path: /app/storage/files
+    volumes:
+      - revex-files:/app/storage/files
+    depends_on:
+      keycloak:
+        condition: service_started
+      mongodb:
+        condition: service_healthy
+      history-postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  revex-frontend:
+    build:
+      context: ./Frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - revex-api
+    restart: unless-stopped
+
+volumes:
+  mongodb-data:
+  content-history-data:
+  revex-files:
