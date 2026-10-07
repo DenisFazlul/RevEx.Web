@@ -1,4 +1,5 @@
 import { ExternalLink, Monitor, Shield } from 'lucide-react'
+import { DesktopReleaseAdmin } from '../components/DesktopReleaseAdmin'
 
 const desktopApiUrl = import.meta.env.VITE_DESKTOP_API_URL || import.meta.env.VITE_API_URL || 'http://localhost:8080/'
 const keycloakUrl = import.meta.env.VITE_KEYCLOAK_URL || 'http://localhost:8081/admin/master/console/'
@@ -25,5 +26,6 @@ export function AdminPage() {
         <a className="address-link" href={keycloakUrl} target="_blank" rel="noopener noreferrer">{keycloakUrl}<ExternalLink size={16}/></a>
       </section>
     </div>
+    <DesktopReleaseAdmin/>
   </>
 }
