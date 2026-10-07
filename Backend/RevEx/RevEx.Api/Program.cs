@@ -19,6 +19,7 @@ app.UseApiSwagger();
 app.UseCors("Frontend");
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseMiddleware<RevEx.Api.Middleware.DesktopCompatibilityMiddleware>();
 app.MapControllers();
 
 app.Run();

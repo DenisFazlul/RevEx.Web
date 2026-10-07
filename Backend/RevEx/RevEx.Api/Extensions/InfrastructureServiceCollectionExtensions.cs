@@ -3,6 +3,7 @@ using RevEx.Application.Abstractions.Storage;
 using RevEx.Infrastructure.Persistence;
 using RevEx.Infrastructure.Repositories;
 using RevEx.Infrastructure.Storage;
+using RevEx.Infrastructure.DesktopReleases;
 
 namespace RevEx.Api.Extensions;
 
@@ -12,6 +13,8 @@ public static class InfrastructureServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        services.AddSingleton(configuration.GetSection("DesktopReleases").Get<DesktopReleaseOptions>() ?? new DesktopReleaseOptions());
+        services.AddSingleton<IDesktopReleaseStore, FileDesktopReleaseStore>();
         services.AddScoped(typeof(IRepository<>), typeof(MongoRepository<>));
         services.AddScoped<IUnitOfWork, MongoUnitOfWork>();
 
