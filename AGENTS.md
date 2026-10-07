@@ -1,8 +1,9 @@
 # RevEx Web guide
 
 Scope: everything under `WEB/`. The backend Git root is `WEB/Backend/RevEx/`.
-The Compose file, frontend, realm import, and Keycloak theme are outside that Git
-repository; verify their status separately and do not include them in backend commits.
+The frontend, Compose file, realm import, and Keycloak theme belong to the separate
+`WEB/` Git repository; do not include them in backend commits. `WEB/.gitignore`
+excludes the independent backend checkout.
 
 ## Backend
 
