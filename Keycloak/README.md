@@ -27,7 +27,7 @@ To replace the icon, update `revex-mark.svg` while keeping its path and square
 - Realm: `revex`, default/supported locale: Russian.
 - Desktop client: `revex-desktop`, public Authorization Code client with PKCE S256.
 - Allowed desktop redirect: `http://127.0.0.1:7890/`.
-- API bearer audience: `revex-api`, added by the desktop client's audience mapper.
+- API bearer audience: `revex-api`, added by desktop and frontend client audience mappers.
 - Local users and effective realm roles:
   - `user` — `user` (read-only catalog access); password from `REVEX_USER_PASSWORD`.
   - `moder` — `moderator`, inherited `user` (content editing); password from
@@ -55,6 +55,19 @@ Use `prompt=login` when testing the authorization endpoint; otherwise an existin
 browser SSO session may immediately complete authentication and hide the login page.
 Check both desktop width and a narrow viewport after CSS changes. Also verify an
 invalid login so that the error alert is rendered correctly.
+
+An import does not overwrite an existing realm. For the new frontend release-management
+API, apply the audience mapper to the existing local realm (Node.js 22+, credentials
+from `.env`; no password/token is printed):
+
+```bash
+node Keycloak/configure-frontend-api-audience.mjs
+```
+
+This changes only the `revex-frontend` audience mapper, not user roles, PKCE, grants,
+or API authorization. Sign in again afterward. On a fresh deployment the realm import
+already contains the mapper. In a customer's existing realm add an audience mapper
+with included client audience `revex-api`, access token on and ID token off.
 
 This is development configuration. Passwords are supplied through the untracked
 `WEB/.env` file and substituted into the realm import at startup. The stack uses HTTP

@@ -10,10 +10,11 @@ const env = Object.fromEntries((await readFile(new URL('../../../../.env', impor
   .split('\n').filter(line => /^[A-Z_]+=/.test(line)).map(line => {
     const at = line.indexOf('='); return [line.slice(0, at), line.slice(at + 1).trim().replace(/^['"]|['"]$/g, '')];
   }));
-async function token(user, password) {
+async function token(user, password, client = 'revex-desktop') {
+  const redirect = client === 'revex-desktop' ? 'http://127.0.0.1:7890/' : 'http://localhost:3000/admin';
   const verifier = randomBytes(32).toString('base64url');
   const auth = new URL(issuer + '/auth');
-  auth.search = new URLSearchParams({ client_id: 'revex-desktop', redirect_uri: 'http://127.0.0.1:7890/',
+  auth.search = new URLSearchParams({ client_id: client, redirect_uri: redirect,
     response_type: 'code', scope: 'openid', code_challenge_method: 'S256',
     code_challenge: createHash('sha256').update(verifier).digest('base64url') });
   const page = await fetch(auth, { redirect: 'manual' });
@@ -24,10 +25,10 @@ async function token(user, password) {
   const logged = await fetch(action, { method: 'POST', redirect: 'manual', headers: { Cookie: cookie },
     body: new URLSearchParams({ username: user, password, credentialId: '' }) });
   const location = logged.headers.get('location');
-  assert.ok(location?.startsWith('http://127.0.0.1:7890/'), `Login succeeded for ${user}`);
+  assert.ok(location?.startsWith(redirect), `Login succeeded for ${user}`);
   const code = new URL(location).searchParams.get('code');
   const response = await fetch(issuer + '/token', { method: 'POST', body: new URLSearchParams({
-    grant_type: 'authorization_code', client_id: 'revex-desktop', redirect_uri: 'http://127.0.0.1:7890/',
+    grant_type: 'authorization_code', client_id: client, redirect_uri: redirect,
     code, code_verifier: verifier }) });
   assert.equal(response.status, 200);
   return (await response.json()).access_token;
@@ -40,6 +41,8 @@ async function check(path, expected, name, options = {}) {
 }
 await check('/api/desktop-release', 404, 'Fresh isolated API has no active release');
 await check('/api/desktop-releases', 401, 'Anonymous admin access denied');
+const frontendAdmin = { Authorization: 'Bearer ' + await token('admin', env.REVEX_ADMIN_PASSWORD, 'revex-frontend') };
+await check('/api/desktop-releases', 200, 'Frontend admin token can call release API', { headers: frontendAdmin });
 const admin = { Authorization: 'Bearer ' + await token('admin', env.REVEX_ADMIN_PASSWORD) };
 const user = { Authorization: 'Bearer ' + await token('user', env.REVEX_USER_PASSWORD) };
 const moderator = { Authorization: 'Bearer ' + await token('moder', env.REVEX_MODERATOR_PASSWORD) };

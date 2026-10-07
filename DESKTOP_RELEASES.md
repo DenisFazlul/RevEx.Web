@@ -2,6 +2,10 @@
 
 ## Администратор
 
+Для существующего Keycloak настройте audience `revex-api` у клиента `revex-frontend`
+(см. `Keycloak/README.md`) и войдите заново. Новый realm-import уже содержит эту
+настройку. Без неё API правильно отклоняет токен фронтенда с ответом 401.
+
 1. Войдите во frontend на вкладке Admin под пользователем с ролью `administrator`.
 2. Скачайте результат Actions `RevEx-Desktop-Release-<version>` из репозитория десктопа.
 3. Распакуйте внешний ZIP GitHub: внутри находится ZIP-комплект релиза.
