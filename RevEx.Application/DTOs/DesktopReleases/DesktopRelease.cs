@@ -3,12 +3,15 @@ namespace RevEx.Application.DTOs.DesktopReleases;
 public sealed record DesktopReleaseManifest(
     string Version, string Notes, Dictionary<string, string> Installers);
 public sealed record DesktopReleaseRecord(DesktopReleaseManifest Manifest, DateTimeOffset UploadedAt, DateTimeOffset? DeletedAt = null,
-    DateTimeOffset? PublishedAt = null, bool IsActive = false);
+    DateTimeOffset? PublishedAt = null, bool IsActive = false,
+    Dictionary<string, DesktopPlatformState>? Platforms = null);
+public sealed record DesktopPlatformState(DateTimeOffset? PublishedAt = null, bool IsActive = false);
+public sealed record DesktopPlatformTarget(string Version, string Installer, string Notes);
 public sealed record DesktopReleaseEdit(string Notes);
-public sealed record DesktopReleaseActivation(string Version, bool IsActive = true);
+public sealed record DesktopReleaseActivation(string Version, bool IsActive = true, string? Platform = null);
 public sealed record DesktopReleaseInfo(string BackendVersion, string RecommendedDesktopVersion,
     string UpdatesPath,
-    Dictionary<string, string> Installers, string Notes);
+    Dictionary<string, string> Installers, string Notes, Dictionary<string, DesktopPlatformTarget>? Targets = null);
 
 public static class DesktopVersions
 {

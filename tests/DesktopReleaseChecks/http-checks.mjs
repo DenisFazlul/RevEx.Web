@@ -5,7 +5,7 @@ import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 
 const api = process.env.REVEX_TEST_API_URL ?? 'http://localhost:18082';
-const issuer = 'http://localhost:8081/realms/revex/protocol/openid-connect';
+const issuer = (process.env.REVEX_TEST_ISSUER ?? 'http://localhost:8081/realms/revex') + '/protocol/openid-connect';
 const env = Object.fromEntries((await readFile(new URL('../../../../.env', import.meta.url), 'utf8'))
   .split('\n').filter(line => /^[A-Z_]+=/.test(line)).map(line => {
     const at = line.indexOf('='); return [line.slice(0, at), line.slice(at + 1).trim().replace(/^['"]|['"]$/g, '')];
@@ -25,7 +25,11 @@ async function token(user, password, client = 'revex-desktop') {
   const logged = await fetch(action, { method: 'POST', redirect: 'manual', headers: { Cookie: cookie },
     body: new URLSearchParams({ username: user, password, credentialId: '' }) });
   const location = logged.headers.get('location');
-  assert.ok(location?.startsWith(redirect), `Login succeeded for ${user}`);
+  if (!location?.startsWith(redirect)) {
+    const loginHtml = await logged.text();
+    const loginError = loginHtml.match(/id="(?:input-error|kc-error-message)"[^>]*>([\s\S]*?)<\/span>/)?.[1]?.replace(/<[^>]+>/g, '').trim();
+    throw new Error(`Test login failed for ${user}: HTTP ${logged.status}; ${loginError ?? 'no redirect'}`);
+  }
   const code = new URL(location).searchParams.get('code');
   const response = await fetch(issuer + '/token', { method: 'POST', body: new URLSearchParams({
     grant_type: 'authorization_code', client_id: client, redirect_uri: redirect,
@@ -59,7 +63,7 @@ await check('/api/desktop-releases', 403, 'Moderator cannot manage releases', { 
 await check('/api/desktop-releases', 200, 'Administrator can list releases', { headers: admin });
 
 const json = (headers, body) => ({ method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-const activate = (version, isActive = true) => json(frontendAdmin, { version, isActive });
+const activate = (version, isActive = true, platform) => json(frontendAdmin, { version, isActive, platform });
 async function upload(suffix, version) {
   const form = new FormData();
   form.append('file', new Blob([await readFile('/private/tmp/revex-release-fixture.zip' + suffix)]), 'fixture.zip');
@@ -125,3 +129,42 @@ assert.ok(history.downloads.some(item => item.offerId === optional.offerId && it
 assert.ok(history.downloads.some(item => item.offerId === optional.offerId && item.status === 'partial'));
 assert.ok(!JSON.stringify(history).includes(identity.installationKey));
 console.log('PASS: Download and confirmation audit is persisted, attributed and contains no installation secret');
+
+await upload('.windows.zip', '99.0.4 (Windows only)');
+await check('/api/desktop-releases/99.0.4/activate', 204, 'Publish Windows independently', activate('99.0.4', true, 'win-x64'));
+const targets = await (await check('/api/desktop-installers', 200, 'Public platform-specific installation targets')).json();
+assert.equal(targets.targets['win-x64'].version, '99.0.4');
+assert.equal(targets.targets['osx-x64'].version, '99.0.1');
+assert.equal(targets.targets['osx-arm64'].version, '99.0.1');
+assert.ok(targets.installers['win-x64'].includes('/99.0.4/'));
+assert.ok(targets.installers['osx-x64'].includes('/99.0.1/'));
+await check('/api/categories', 200, 'Windows API accepts independently published version', { headers: { ...user, 'X-RevEx-Desktop-Version': '99.0.4', 'X-RevEx-Desktop-Platform': 'win-x64' } });
+await check('/api/categories', 409, 'Windows support does not authorize macOS with same version', { headers: { ...user, 'X-RevEx-Desktop-Version': '99.0.4', 'X-RevEx-Desktop-Platform': 'osx-x64' } });
+await check('/api/categories', 409, 'Partial release requires platform header', { headers: { ...user, 'X-RevEx-Desktop-Version': '99.0.4' } });
+await check('/api/categories', 409, 'Unknown platform rejected in ordinary API', { headers: { ...user, 'X-RevEx-Desktop-Version': '99.0.4', 'X-RevEx-Desktop-Platform': 'linux-x64' } });
+const legacy = await (await check('/api/desktop-release', 200, 'Legacy protocol retains latest common active version')).json();
+assert.equal(legacy.recommendedDesktopVersion, '99.0.1');
+const windowsLegacy = await (await check('/api/desktop-release?platform=win-x64', 200, 'Explicit platform selects independent target')).json();
+assert.equal(windowsLegacy.recommendedDesktopVersion, '99.0.4');
+await check('/api/desktop-release?platform=linux-x64', 400, 'Invalid platform cannot select legacy release');
+await upload('.mac.zip', '99.0.4 (macOS appended)');
+await check('/api/desktop-releases/99.0.4/files/RevEx-win-x64.exe', 200, 'Appending macOS preserves Windows installer');
+await check('/api/desktop-releases/99.0.4/files/RevEx-osx-x64.pkg', 404, 'Appended macOS installer is private draft');
+await check('/api/desktop-releases/99.0.4/files/releases.osx-x64.json', 404, 'Appended macOS feed is private draft');
+await check('/api/desktop-releases/99.0.4/files/RevEx-99.0.4-osx-x64-full.nupkg', 404, 'Appended macOS package is private draft');
+const winOffer = await (await check('/api/desktop-updates/check', 200, 'Windows gets independently selected update', json({}, identity))).json();
+assert.equal(winOffer.targetVersion, '99.0.4'); assert.equal(winOffer.package.platform, 'win-x64');
+const macIdentity = { installationId: randomUUID(), installationKey: randomBytes(32).toString('hex'), platform: 'osx-x64', version: '99.0.1' };
+const macCurrent = await (await check('/api/desktop-updates/check', 200, 'macOS keeps its current version before publication', json({}, macIdentity))).json();
+assert.equal(macCurrent.decision, 'current');
+await check('/api/desktop-releases/99.0.4/activate', 204, 'Publish macOS Intel independently', activate('99.0.4', true, 'osx-x64'));
+await check('/api/categories', 200, 'Published macOS version now accepted', { headers: { ...user, 'X-RevEx-Desktop-Version': '99.0.4', 'X-RevEx-Desktop-Platform': 'osx-x64' } });
+await check('/api/desktop-releases/99.0.4/files/RevEx-osx-arm64.pkg', 404, 'Publishing Intel does not expose Apple Silicon draft');
+await check('/api/desktop-releases/99.0.4/activate', 204, 'Rollback Windows without changing macOS', activate('99.0.4', false, 'win-x64'));
+const changed = await (await check('/api/desktop-installers', 200, 'Installer links reflect independent rollback')).json();
+assert.equal(changed.targets['win-x64'].version, '99.0.1'); assert.equal(changed.targets['osx-x64'].version, '99.0.4');
+await check('/api/categories', 409, 'Rolled-back Windows version rejected despite active macOS', { headers: { ...user, 'X-RevEx-Desktop-Version': '99.0.4', 'X-RevEx-Desktop-Platform': 'win-x64' } });
+await check('/api/categories', 200, 'macOS remains supported after Windows rollback', { headers: { ...user, 'X-RevEx-Desktop-Version': '99.0.4', 'X-RevEx-Desktop-Platform': 'osx-x64' } });
+await check('/' + winOffer.downloadPath, 200, 'Pinned Windows offer remains downloadable after platform rollback', { headers: { 'X-RevEx-Installation-Key': identity.installationKey } });
+await check('/api/desktop-releases/99.0.1/activate', 409, 'Active macOS cannot allow disabling last Windows version', activate('99.0.1', false, 'win-x64'));
+console.log('PASS: Independent platform publication, compatibility, downloads and rollback verified over HTTP');

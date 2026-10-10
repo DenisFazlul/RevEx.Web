@@ -64,16 +64,29 @@ public sealed class DesktopReleasesController(IDesktopReleaseStore releases) : C
 
     [AllowAnonymous]
     [HttpGet("/api/desktop-release")]
-    public async Task<IActionResult> Active(CancellationToken cancellationToken)
+    public async Task<IActionResult> Active(CancellationToken cancellationToken, [FromQuery] string? platform = null)
     {
         Response.Headers.CacheControl = "no-store";
-        var release = await releases.GetActiveAsync(cancellationToken);
-        if (release == null) return NotFound(new { message = "Администратор ещё не опубликовал активный релиз десктопа." });
+        DesktopReleaseInfo? release;
+        try { release = await releases.GetActiveAsync(cancellationToken, platform, legacy: true); }
+        catch (ArgumentException exception) { return BadRequest(new { message = exception.Message }); }
+        if (release == null) return NotFound(new { message = platform == null
+            ? "Нет общего активного релиза для прежнего протокола. Скачайте актуальный установщик для своей платформы через веб-интерфейс."
+            : "Администратор ещё не опубликовал активную сборку для этой платформы." });
         // Bridge for installed clients using the previous protocol: require the server-selected target.
         // Admin policy has no ranges; new clients use /api/desktop-updates/check.
         return Ok(new { release.BackendVersion, release.RecommendedDesktopVersion,
             MinimumDesktopVersion = release.RecommendedDesktopVersion, MaximumDesktopVersion = release.RecommendedDesktopVersion,
             release.UpdatesPath, release.Installers, release.Notes });
+    }
+
+    [AllowAnonymous]
+    [HttpGet("/api/desktop-installers")]
+    public async Task<IActionResult> Installers(CancellationToken cancellationToken)
+    {
+        Response.Headers.CacheControl = "no-store";
+        var release = await releases.GetActiveAsync(cancellationToken);
+        return release == null ? NotFound(new { message = "Нет опубликованных сборок десктопа." }) : Ok(release);
     }
 
     [AllowAnonymous]
