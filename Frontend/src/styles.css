@@ -34,6 +34,7 @@ h2 { font:600 27px/1.2 'Playfair Display',serif; margin:22px 0 12px; }
 .release-admin { margin-top:24px; }
 .release-button { display:inline-flex; align-items:center; justify-content:center; gap:8px; border:1px solid var(--green); border-radius:10px; background:var(--green); color:white; padding:12px 18px; text-decoration:none; font:inherit; }
 .release-button.secondary { background:transparent; color:var(--green); }
+.release-button.danger { background:#fff4f0; border-color:#d4a297; color:#8a3428; }
 .release-button:disabled { opacity:.5; cursor:wait; }
 .download-links { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:20px; }
 .release-admin fieldset { border:1px solid var(--line); border-radius:12px; padding:20px; margin:24px 0; }
@@ -49,3 +50,78 @@ h2 { font:600 27px/1.2 'Playfair Display',serif; margin:22px 0 12px; }
 .release-list span { display:block; margin:8px 0; color:#68716d; font-size:13px; }
 .release-notes { white-space:pre-wrap; overflow-wrap:anywhere; }
 @media(max-width:700px) { .release-range { grid-template-columns:1fr; } .download-links .release-button { width:100%; } }
+
+.admin-sections { gap:8px; padding-bottom:24px; flex-wrap:wrap; }
+.admin-intro { margin-bottom:24px; }
+.admin-intro h1 { font-size:clamp(32px,4vw,48px); line-height:1.15; }
+.admin-sections button { padding:12px 18px; border:1px solid var(--line); border-radius:10px; background:transparent; color:#64706a; }
+.admin-sections button[aria-pressed="true"] { background:var(--green); border-color:var(--green); color:white; }
+.release-manager { min-width:0; }
+.release-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin-bottom:24px; }
+.release-summary>div { background:var(--paper); border:1px solid var(--line); border-radius:14px; padding:20px; display:flex; flex-direction:column; gap:10px; }
+.release-summary span,.release-summary small { font-size:13px; color:#64706a; }
+.release-summary strong { font-size:28px; font-weight:600; overflow-wrap:anywhere; }
+.release-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px; }
+.release-search { display:flex; align-items:center; gap:10px; flex:1; min-width:220px; background:white; border:1px solid var(--line); border-radius:10px; padding:0 12px; color:#64706a; }
+.release-manager .release-search { display:flex; margin-bottom:0; }
+.release-search input { min-width:0; width:100%; border:0; background:transparent; padding:14px 0; font:inherit; }
+.release-toolbar select { border:1px solid var(--line); background:var(--paper); border-radius:10px; padding:13px; font:inherit; }
+.release-icon-button { display:inline-flex; align-items:center; justify-content:center; border:1px solid var(--line); border-radius:10px; background:transparent; color:var(--ink); padding:12px; flex-shrink:0; }
+.release-icon-button:disabled { opacity:.5; cursor:default; }
+.release-workspace { display:grid; grid-template-columns:minmax(0,.95fr) minmax(0,1.15fr); gap:20px; align-items:start; }
+.release-catalog,.release-editor { background:var(--paper); border:1px solid var(--line); border-radius:14px; min-width:0; overflow:hidden; }
+.release-catalog>h2 { font:600 18px/1.4 system-ui,sans-serif; margin:0; padding:20px; border-bottom:1px solid var(--line); }
+.release-catalog>h2 span { font-size:13px; color:#64706a; margin-left:8px; }
+.release-table-wrap { overflow:auto; }
+.release-table { width:100%; border-collapse:collapse; text-align:left; }
+.release-table th { font-size:12px; font-weight:500; color:#64706a; padding:14px 20px; border-bottom:1px solid var(--line); }
+.release-table td { padding:0 20px; border-bottom:1px solid var(--line); vertical-align:middle; }
+.release-table tr:last-child td { border-bottom:0; }
+.release-table tr.selected { background:#eaf0e3; box-shadow:inset 3px 0 var(--green); }
+.release-row-select { border:0; width:100%; text-align:left; background:transparent; padding:20px 0; display:flex; flex-direction:column; gap:7px; color:var(--ink); }
+.release-row-select strong { display:flex; align-items:center; gap:8px; font-size:17px; }
+.release-row-select span { font-size:13px; color:#64706a; max-width:260px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow-wrap:anywhere; }
+.release-row-select small { font-size:11px; color:#64706a; }
+.release-badge { display:inline-block; white-space:nowrap; font-size:11px; padding:6px 9px; border-radius:99px; background:#eee9df; color:#686459; }
+.release-badge.active { background:#dce9d2; color:#235947; }
+.release-badge.trash { background:#f2e2dc; color:#8a3428; }
+.release-editor { padding:24px; }
+.release-editor-heading { display:flex; align-items:center; justify-content:space-between; color:var(--green); margin-bottom:20px; }
+.release-editor-heading h2 { font:600 30px/1.2 system-ui,sans-serif; margin:8px 0 0; color:var(--ink); }
+.release-editor-heading .eyebrow { font-size:10px; }
+.release-manager label,.release-dialog label { display:block; font-size:13px; font-weight:600; margin-bottom:14px; }
+.release-editor input,.release-editor textarea,.release-dialog input { display:block; width:100%; margin-top:8px; padding:12px; border:1px solid var(--line); border-radius:8px; background:white; color:var(--ink); font:inherit; }
+.release-editor input[readonly] { background:#efece4; color:#64706a; }
+.release-editor textarea { resize:vertical; min-height:110px; }
+.release-editor fieldset,.release-dialog fieldset { border:0; margin:0; padding:0; min-width:0; }
+.release-editor legend { margin:20px 0 16px; font-size:15px; font-weight:600; }
+.release-policy-form { margin-top:24px; }
+.release-manager p,.release-dialog p { line-height:1.65; font-size:14px; }
+.release-manager .release-help,.release-dialog .release-help { font-size:12px; color:#64706a; margin:0 0 16px; }
+.release-editor h3 { font-size:15px; margin:24px 0 12px; }
+.release-files { padding:0; margin:0; list-style:none; }
+.release-files li { padding:12px 0; display:flex; flex-direction:column; gap:6px; border-bottom:1px solid var(--line); }
+.release-files strong { font-size:12px; }
+.release-files span { font-size:11px; color:#64706a; overflow-wrap:anywhere; }
+.release-delete-zone { border-top:1px solid var(--line); margin-top:24px; padding-top:12px; }
+.release-delete-zone p,.release-trash-notice p { font-size:12px; color:#64706a; }
+.release-empty { min-height:250px; padding:36px 24px; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:12px; text-align:center; color:#64706a; }
+.release-empty strong { font-size:17px; color:var(--ink); }
+.release-empty p { font-size:13px; margin:0; max-width:300px; }
+.release-feedback { border-radius:10px; padding:14px 18px; overflow-wrap:anywhere; }
+.release-feedback.error { background:#f8e5df; color:#8a3428; }
+.release-feedback.success { background:#e5ecdc; color:var(--green); }
+.release-busy { color:#64706a; }
+.release-overlay { position:fixed; inset:0; z-index:100; padding:24px; background:#17251fcc; display:flex; align-items:center; justify-content:center; }
+.release-dialog { background:var(--paper); border-radius:16px; padding:28px; width:min(620px,100%); max-height:calc(100dvh - 48px); overflow:auto; box-shadow:0 20px 80px #0004; }
+.release-dialog-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:20px; }
+.release-dialog h2 { margin:0; font:600 23px/1.3 system-ui,sans-serif; }
+.release-manager input:focus-visible,.release-manager textarea:focus-visible,.release-manager select:focus-visible,.release-dialog input:focus-visible { outline:2px solid var(--green); outline-offset:2px; }
+@media(max-width:850px) { .release-workspace { grid-template-columns:1fr; } .release-summary { gap:10px; } .release-summary>div { padding:16px; } }
+@media(max-width:550px) { .release-summary { grid-template-columns:1fr; } .release-toolbar>* { width:100%; } .release-toolbar .release-icon-button { width:auto; } .release-editor { padding:18px; } .release-table td,.release-table th { padding-left:14px; padding-right:14px; } .release-overlay { padding:12px; } .release-dialog { padding:20px; max-height:calc(100dvh - 24px); } }
+
+.release-history-card { background:var(--paper); border:1px solid var(--line); border-radius:14px; overflow:hidden; margin-bottom:24px; }
+.release-history-card>h2 { font:600 18px/1.4 system-ui,sans-serif; padding:20px; margin:0; border-bottom:1px solid var(--line); }
+.release-history-card>.release-help { padding:16px 20px 0; }
+.release-history-card .release-table td { padding:16px 20px; font-size:13px; overflow-wrap:anywhere; }
+.release-history-card .release-table th { white-space:nowrap; }

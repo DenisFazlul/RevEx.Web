@@ -3,8 +3,6 @@ import { keycloak } from './auth'
 export type DesktopRelease = {
   backendVersion: string
   recommendedDesktopVersion: string
-  minimumDesktopVersion: string
-  maximumDesktopVersion: string
   updatesPath: string
   installers: Record<string, string>
   notes: string
@@ -12,6 +10,9 @@ export type DesktopRelease = {
 export type ReleaseRecord = {
   manifest: { version: string; notes: string; installers: Record<string, string> }
   uploadedAt: string
+  publishedAt?: string | null
+  isActive: boolean
+  deletedAt?: string | null
 }
 
 const baseUrl = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
@@ -34,16 +35,34 @@ async function request<T>(path: string, options?: RequestInit, admin = false, al
 }
 
 export const desktopReleases = {
+  history: () => request<DesktopUpdateHistory>('api/desktop-updates/history?limit=500', undefined, true),
   active: () => request<DesktopRelease | null>('api/desktop-release', undefined, false, true),
   list: () => request<ReleaseRecord[]>('api/desktop-releases', undefined, true),
+  edit: (version: string, notes: string) => request<ReleaseRecord>(`api/desktop-releases/${encodeURIComponent(version)}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notes }),
+  }, true),
+  remove: (version: string) => request<void>(`api/desktop-releases/${encodeURIComponent(version)}`, { method: 'DELETE' }, true),
+  restore: (version: string) => request<void>(`api/desktop-releases/${encodeURIComponent(version)}/restore`, { method: 'POST' }, true),
   upload: (file: File) => {
     const data = new FormData()
     data.append('file', file)
     return request<ReleaseRecord>('api/desktop-releases', { method: 'POST', body: data }, true)
   },
-  activate: (version: string, minimumDesktopVersion: string, maximumDesktopVersion: string) =>
+  activate: (version: string, isActive: boolean) =>
     request<void>(`api/desktop-releases/${encodeURIComponent(version)}/activate`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ version, minimumDesktopVersion, maximumDesktopVersion }),
+      body: JSON.stringify({ version, isActive }),
     }, true),
 }
+
+export type DesktopInstallation = { installationId: string; platform: string; version: string; lastSeenAt: string; userId?: string; userName?: string }
+export type DesktopUpdateEvent = {
+  id: string; installationId: string; fromVersion: string; offeredAt: string; confirmedAt?: string;
+  userId?: string; userName?: string; failure?: string;
+  policy: { targetVersion: string; isDowngrade: boolean; decision: string }
+}
+export type DesktopDownloadEvent = {
+  id: string; offerId?: string; installationId?: string; version: string; fileName: string;
+  startedAt: string; finishedAt?: string; status: string; userId?: string; userName?: string
+}
+export type DesktopUpdateHistory = { installations: DesktopInstallation[]; updates: DesktopUpdateEvent[]; downloads: DesktopDownloadEvent[] }

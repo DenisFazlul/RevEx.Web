@@ -14,6 +14,7 @@ public static class DatabaseServiceCollectionExtensions
         services.Configure<ContentHistoryOptions>(
             configuration.GetRequiredSection(ContentHistoryOptions.SectionName));
         services.AddSingleton<IContentHistoryStore, PostgresContentHistoryStore>();
+        services.AddSingleton<IDesktopUpdateTrackingStore, PostgresDesktopUpdateTrackingStore>();
 
         return services;
     }

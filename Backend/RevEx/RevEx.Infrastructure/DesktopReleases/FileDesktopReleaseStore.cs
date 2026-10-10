@@ -22,9 +22,37 @@ public sealed class FileDesktopReleaseStore : IDesktopReleaseStore
         _root = System.IO.Path.GetFullPath(options.Path);
         _maximumBytes = options.MaximumExpandedBytes;
         Directory.CreateDirectory(_root);
+        // One-time upgrade of the old single-release policy. Preserve the file for recovery.
+        var legacy = System.IO.Path.Combine(_root, "active.json");
+        if (File.Exists(legacy))
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(legacy));
+            var version = document.RootElement.GetProperty("version").GetString()!;
+            DesktopVersions.Parse(version);
+            var path = System.IO.Path.Combine(_root, version, "record.json");
+            if (File.Exists(path))
+            {
+                var record = JsonSerializer.Deserialize<DesktopReleaseRecord>(File.ReadAllText(path), Json)!;
+                var upgraded = record with { PublishedAt = record.PublishedAt ?? record.UploadedAt, IsActive = true };
+                var temporary = path + ".migration.tmp";
+                File.WriteAllText(temporary, JsonSerializer.Serialize(upgraded, Json));
+                File.Move(temporary, path, true);
+                File.Move(legacy, legacy + ".legacy", true);
+            }
+        }
     }
 
     public async Task<IReadOnlyList<DesktopReleaseRecord>> ListAsync(CancellationToken cancellationToken)
+    {
+        await _mutation.WaitAsync(cancellationToken);
+        try
+        {
+            return await ListCoreAsync(cancellationToken);
+        }
+        finally { _mutation.Release(); }
+    }
+
+    private async Task<IReadOnlyList<DesktopReleaseRecord>> ListCoreAsync(CancellationToken cancellationToken)
     {
         var result = new List<DesktopReleaseRecord>();
         foreach (var directory in Directory.EnumerateDirectories(_root).Where(p => !System.IO.Path.GetFileName(p).StartsWith('.')))
@@ -32,6 +60,13 @@ public sealed class FileDesktopReleaseStore : IDesktopReleaseStore
             var record = await ReadAsync<DesktopReleaseRecord>(System.IO.Path.Combine(directory, "record.json"), cancellationToken);
             if (record != null) result.Add(record);
         }
+        var trash = System.IO.Path.Combine(_root, ".trash");
+        if (Directory.Exists(trash))
+            foreach (var directory in Directory.EnumerateDirectories(trash))
+            {
+                var record = await ReadAsync<DesktopReleaseRecord>(System.IO.Path.Combine(directory, "record.json"), cancellationToken);
+                if (record != null) result.Add(record with { DeletedAt = record.DeletedAt ?? Directory.GetLastWriteTimeUtc(directory) });
+            }
         return result.OrderByDescending(r => DesktopVersions.Parse(r.Manifest.Version)).ToArray();
     }
 
@@ -109,7 +144,8 @@ public sealed class FileDesktopReleaseStore : IDesktopReleaseStore
             if (manifest.Installers.Count != Platforms.Length || !expected.SetEquals(names))
                 throw new ArgumentException("Архив содержит лишние файлы или неполный комплект.");
             var target = System.IO.Path.Combine(_root, manifest.Version);
-            if (Directory.Exists(target)) throw new InvalidOperationException("Эта версия уже загружена. Выпустите новую версию.");
+            if (Directory.Exists(target) || Directory.Exists(System.IO.Path.Combine(_root, ".trash", manifest.Version)))
+                throw new InvalidOperationException("Эта версия уже загружена или находится в корзине. Восстановите её либо выпустите новую версию.");
             var record = new DesktopReleaseRecord(manifest, DateTimeOffset.UtcNow);
             await WriteAtomicAsync(System.IO.Path.Combine(staging, "record.json"), record, cancellationToken);
             Directory.Move(staging, target);
@@ -128,15 +164,20 @@ public sealed class FileDesktopReleaseStore : IDesktopReleaseStore
 
     public async Task ActivateAsync(DesktopReleaseActivation activation, CancellationToken cancellationToken)
     {
-        var recommended = DesktopVersions.Parse(activation.Version);
-        var minimum = DesktopVersions.Parse(activation.MinimumDesktopVersion);
-        var maximum = DesktopVersions.Parse(activation.MaximumDesktopVersion);
-        if (minimum > recommended || recommended > maximum) throw new ArgumentException("Рекомендуемая версия должна находиться внутри диапазона совместимости.");
+        DesktopVersions.Parse(activation.Version);
         await _mutation.WaitAsync(cancellationToken);
         try
         {
             var record = await ReadAsync<DesktopReleaseRecord>(System.IO.Path.Combine(_root, activation.Version, "record.json"), cancellationToken)
                 ?? throw new ArgumentException("Релиз не найден.");
+            if (!activation.IsActive)
+            {
+                if (record.PublishedAt == null) throw new ArgumentException("Черновик ещё не опубликован.");
+                if (record.IsActive && !(await ListCoreAsync(cancellationToken)).Any(r => r.IsActive && r.DeletedAt == null && r.Manifest.Version != activation.Version))
+                    throw new InvalidOperationException("Нельзя отключить последнюю активную версию. Сначала включите другую.");
+                await WriteAtomicAsync(System.IO.Path.Combine(_root, activation.Version, "record.json"), record with { IsActive = false }, cancellationToken);
+                return;
+            }
             foreach (var file in record.Manifest.Installers.Values) RequireFile(System.IO.Path.Combine(_root, activation.Version), file);
             foreach (var platform in Platforms)
             {
@@ -151,28 +192,133 @@ public sealed class FileDesktopReleaseStore : IDesktopReleaseStore
                 if (!hash.Equals(asset.GetProperty("SHA256").GetString(), StringComparison.OrdinalIgnoreCase))
                     throw new ArgumentException("Пакет изменён после загрузки. Активация запрещена.");
             }
-            await WriteAtomicAsync(System.IO.Path.Combine(_root, "active.json"), activation, cancellationToken);
+            await WriteAtomicAsync(System.IO.Path.Combine(_root, activation.Version, "record.json"),
+                record with { PublishedAt = record.PublishedAt ?? DateTimeOffset.UtcNow, IsActive = true }, cancellationToken);
+        }
+        finally { _mutation.Release(); }
+    }
+
+    public async Task<DesktopReleaseRecord> EditAsync(string version, DesktopReleaseEdit edit, CancellationToken cancellationToken)
+    {
+        DesktopVersions.Parse(version);
+        if (edit.Notes == null || edit.Notes.Length > 12000) throw new ArgumentException("Описание должно быть не длиннее 12000 символов.");
+        await _mutation.WaitAsync(cancellationToken);
+        try
+        {
+            var path = System.IO.Path.Combine(_root, version, "record.json");
+            var record = await ReadAsync<DesktopReleaseRecord>(path, cancellationToken) ?? throw new ArgumentException("Сборка не найдена или находится в корзине.");
+            var updated = record with { Manifest = record.Manifest with { Notes = edit.Notes } };
+            await WriteAtomicAsync(path, updated, cancellationToken);
+            return updated;
+        }
+        finally { _mutation.Release(); }
+    }
+
+    public async Task DeleteAsync(string version, CancellationToken cancellationToken)
+    {
+        DesktopVersions.Parse(version);
+        await _mutation.WaitAsync(cancellationToken);
+        try
+        {
+            var source = System.IO.Path.Combine(_root, version);
+            var record = await ReadAsync<DesktopReleaseRecord>(System.IO.Path.Combine(source, "record.json"), cancellationToken)
+                ?? throw new ArgumentException("Сборка не найдена.");
+            if (record.PublishedAt != null) throw new InvalidOperationException("Опубликованные пакеты сохраняются для истории и выданных обновлений. Отключите поддержку версии.");
+            var trash = System.IO.Path.Combine(_root, ".trash");
+            Directory.CreateDirectory(trash);
+            var target = System.IO.Path.Combine(trash, version);
+            Directory.Move(source, target);
+            await WriteAtomicAsync(System.IO.Path.Combine(target, "record.json"), record with { DeletedAt = DateTimeOffset.UtcNow }, CancellationToken.None);
+        }
+        finally { _mutation.Release(); }
+    }
+
+    public async Task RestoreAsync(string version, CancellationToken cancellationToken)
+    {
+        DesktopVersions.Parse(version);
+        await _mutation.WaitAsync(cancellationToken);
+        try
+        {
+            var source = System.IO.Path.Combine(_root, ".trash", version);
+            var record = await ReadAsync<DesktopReleaseRecord>(System.IO.Path.Combine(source, "record.json"), cancellationToken)
+                ?? throw new ArgumentException("Сборка не найдена в корзине.");
+            var target = System.IO.Path.Combine(_root, version);
+            if (Directory.Exists(target)) throw new InvalidOperationException("Версия уже существует.");
+            await WriteAtomicAsync(System.IO.Path.Combine(source, "record.json"), record with { DeletedAt = null }, cancellationToken);
+            Directory.Move(source, target);
         }
         finally { _mutation.Release(); }
     }
 
     public async Task<DesktopReleaseInfo?> GetActiveAsync(CancellationToken cancellationToken)
     {
-        var active = await ReadAsync<DesktopReleaseActivation>(System.IO.Path.Combine(_root, "active.json"), cancellationToken);
-        if (active == null) return null;
-        var record = await ReadAsync<DesktopReleaseRecord>(System.IO.Path.Combine(_root, active.Version, "record.json"), cancellationToken)
-            ?? throw new InvalidOperationException("Файлы активного релиза отсутствуют.");
-        var path = $"api/desktop-releases/{active.Version}/files/";
-        return new DesktopReleaseInfo(Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "unknown",
-            active.Version, active.MinimumDesktopVersion, active.MaximumDesktopVersion, path,
-            record.Manifest.Installers.ToDictionary(p => p.Key, p => path + p.Value), record.Manifest.Notes);
+        await _mutation.WaitAsync(cancellationToken);
+        try
+        {
+            var record = (await ListCoreAsync(cancellationToken)).FirstOrDefault(r => r.IsActive && r.PublishedAt != null && r.DeletedAt == null);
+            if (record == null) return null;
+            var path = $"api/desktop-releases/{record.Manifest.Version}/files/";
+            return new DesktopReleaseInfo(Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "unknown",
+                record.Manifest.Version, path,
+                record.Manifest.Installers.ToDictionary(p => p.Key, p => path + p.Value), record.Manifest.Notes);
+        }
+        finally { _mutation.Release(); }
+    }
+
+    public async Task<bool> IsSupportedAsync(string version, CancellationToken cancellationToken)
+    {
+        DesktopVersions.Parse(version);
+        return (await ListAsync(cancellationToken)).Any(r => r.Manifest.Version == version && r.IsActive && r.PublishedAt != null && r.DeletedAt == null);
+    }
+
+    public async Task<DesktopPolicy?> CheckAsync(string version, string platform, CancellationToken cancellationToken)
+    {
+        var current = DesktopVersions.Parse(version);
+        if (!Platforms.Contains(platform)) throw new ArgumentException("ОС или архитектура не поддерживается.");
+        await _mutation.WaitAsync(cancellationToken);
+        try
+        {
+            var records = await ListCoreAsync(cancellationToken);
+            var target = records.FirstOrDefault(r => r.IsActive && r.PublishedAt != null && r.DeletedAt == null);
+            if (target == null) return null;
+            var targetVersion = target.Manifest.Version;
+            if (version == targetVersion) return new("current", targetVersion, target.Manifest.Notes, null, false);
+            var supported = records.Any(r => r.Manifest.Version == version && r.IsActive && r.PublishedAt != null && r.DeletedAt == null);
+            using var feed = JsonDocument.Parse(await File.ReadAllTextAsync(RequireFile(System.IO.Path.Combine(_root, targetVersion), $"releases.{platform}.json"), cancellationToken));
+            var asset = feed.RootElement.GetProperty("Assets")[0];
+            var package = new DesktopPackage(targetVersion, platform, asset.GetProperty("FileName").GetString()!,
+                asset.GetProperty("Size").GetInt64(), asset.GetProperty("SHA256").GetString()!, asset.TryGetProperty("SHA1", out var sha1) ? sha1.GetString() ?? "" : "");
+            return new(supported ? "optional" : "required", targetVersion, target.Manifest.Notes, package, DesktopVersions.Parse(targetVersion) < current);
+        }
+        finally { _mutation.Release(); }
+    }
+
+    public async Task<string?> GetPublishedPackageAsync(string version, string fileName, CancellationToken cancellationToken)
+    {
+        DesktopVersions.Parse(version);
+        if (!SafeName(fileName) || !fileName.EndsWith(".nupkg", StringComparison.Ordinal)) return null;
+        var record = (await ListAsync(cancellationToken)).FirstOrDefault(r => r.Manifest.Version == version && r.PublishedAt != null && r.DeletedAt == null);
+        if (record == null) return null;
+        var path = System.IO.Path.Combine(_root, version, fileName);
+        return File.Exists(path) ? path : null;
     }
 
     public async Task<string?> GetPublicFileAsync(string version, string fileName, CancellationToken cancellationToken)
     {
-        if (!SafeName(fileName) || fileName is "record.json" or "release.json") return null;
-        var active = await GetActiveAsync(cancellationToken);
-        if (active == null || active.RecommendedDesktopVersion != version) return null;
+        DesktopVersions.Parse(version);
+        if (!SafeName(fileName)) return null;
+        var record = (await ListAsync(cancellationToken)).FirstOrDefault(r => r.Manifest.Version == version && r.PublishedAt != null && r.DeletedAt == null);
+        if (record == null) return null;
+        var allowed = record.Manifest.Installers.Values.Contains(fileName);
+        // Legacy installed clients need their feed and package to acquire the new updater.
+        foreach (var platform in Platforms)
+        {
+            var feedName = $"releases.{platform}.json";
+            if (fileName == feedName) allowed = true;
+            using var feed = JsonDocument.Parse(await File.ReadAllTextAsync(RequireFile(System.IO.Path.Combine(_root, version), feedName), cancellationToken));
+            if (fileName == feed.RootElement.GetProperty("Assets")[0].GetProperty("FileName").GetString()) allowed = true;
+        }
+        if (!allowed) return null;
         var path = System.IO.Path.Combine(_root, version, fileName);
         return File.Exists(path) ? path : null;
     }
@@ -188,7 +334,7 @@ public sealed class FileDesktopReleaseStore : IDesktopReleaseStore
         using var input = specifications[0].Open();
         using var reader = XmlReader.Create(input, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, MaxCharactersInDocument = 65536 });
         var document = XDocument.Load(reader);
-                var metadata = document.Root?.Elements().FirstOrDefault(e => e.Name.LocalName == "metadata");
+        var metadata = document.Root?.Elements().FirstOrDefault(e => e.Name.LocalName == "metadata");
         string? Get(string name) => metadata?.Elements().SingleOrDefault(e => e.Name.LocalName == name)?.Value;
         if (Get("id") != "RevEx.Desktop" || Get("version") != version || Get("channel") != platform || Get("rid") != platform)
             throw new ArgumentException("Версия, архитектура или канал внутри пакета не соответствует релизу.");

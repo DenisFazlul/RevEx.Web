@@ -2,10 +2,12 @@ namespace RevEx.Application.DTOs.DesktopReleases;
 
 public sealed record DesktopReleaseManifest(
     string Version, string Notes, Dictionary<string, string> Installers);
-public sealed record DesktopReleaseRecord(DesktopReleaseManifest Manifest, DateTimeOffset UploadedAt);
-public sealed record DesktopReleaseActivation(string Version, string MinimumDesktopVersion, string MaximumDesktopVersion);
+public sealed record DesktopReleaseRecord(DesktopReleaseManifest Manifest, DateTimeOffset UploadedAt, DateTimeOffset? DeletedAt = null,
+    DateTimeOffset? PublishedAt = null, bool IsActive = false);
+public sealed record DesktopReleaseEdit(string Notes);
+public sealed record DesktopReleaseActivation(string Version, bool IsActive = true);
 public sealed record DesktopReleaseInfo(string BackendVersion, string RecommendedDesktopVersion,
-    string MinimumDesktopVersion, string MaximumDesktopVersion, string UpdatesPath,
+    string UpdatesPath,
     Dictionary<string, string> Installers, string Notes);
 
 public static class DesktopVersions
@@ -18,3 +20,6 @@ public static class DesktopVersions
         return version;
     }
 }
+
+public sealed record DesktopPackage(string Version, string Platform, string FileName, long Size, string Sha256, string Sha1);
+public sealed record DesktopPolicy(string Decision, string TargetVersion, string Notes, DesktopPackage? Package, bool IsDowngrade);
