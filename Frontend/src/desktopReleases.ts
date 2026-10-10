@@ -59,7 +59,7 @@ export type DesktopInstallation = { installationId: string; platform: string; ve
 export type DesktopUpdateEvent = {
   id: string; installationId: string; fromVersion: string; offeredAt: string; confirmedAt?: string;
   userId?: string; userName?: string; failure?: string;
-  policy: { targetVersion: string; isDowngrade: boolean; decision: string }
+  policy: { targetVersion: string; isDowngrade: boolean; decision: string; package?: { platform: string } | null }
 }
 export type DesktopDownloadEvent = {
   id: string; offerId?: string; installationId?: string; version: string; fileName: string;

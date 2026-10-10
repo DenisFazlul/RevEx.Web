@@ -14,7 +14,7 @@ export function AdminPage() {
       <h1>Администрирование</h1>
       <p>Управляйте сборками десктопа, включайте поддержку версий и следите за обновлениями пользователей.</p>
     </section>
-    <nav className="admin-sections" aria-label="Разделы администрирования"><button aria-pressed={section === 'releases'} onClick={() => setSection('releases')}>Сборки десктопа</button><button aria-pressed={section === 'history'} onClick={() => setSection('history')}>Установки и обновления</button><button aria-pressed={section === 'connection'} onClick={() => setSection('connection')}>Подключение и пользователи</button></nav>
+    <nav className="admin-sections" aria-label="Разделы администрирования"><button aria-pressed={section === 'releases'} onClick={() => setSection('releases')}>Сборки десктопа</button><button aria-pressed={section === 'history'} onClick={() => setSection('history')}>Учёт загрузок</button><button aria-pressed={section === 'connection'} onClick={() => setSection('connection')}>Подключение и пользователи</button></nav>
     {section === 'connection' ? <div className="connection-grid">
       <section className="connection-card">
         <span className="connection-icon"><Monitor size={24}/></span>
