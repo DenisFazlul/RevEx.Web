@@ -46,14 +46,18 @@ await check('/api/desktop-releases', 200, 'Frontend admin token can call release
 const admin = { Authorization: 'Bearer ' + await token('admin', env.REVEX_ADMIN_PASSWORD) };
 const user = { Authorization: 'Bearer ' + await token('user', env.REVEX_USER_PASSWORD) };
 const moderator = { Authorization: 'Bearer ' + await token('moder', env.REVEX_MODERATOR_PASSWORD) };
+await check('/api/desktop-releases', 403, 'Frontend user cannot manage releases', {
+  headers: { Authorization: 'Bearer ' + await token('user', env.REVEX_USER_PASSWORD, 'revex-frontend') } });
+await check('/api/desktop-releases', 403, 'Frontend moderator cannot manage releases', {
+  headers: { Authorization: 'Bearer ' + await token('moder', env.REVEX_MODERATOR_PASSWORD, 'revex-frontend') } });
 await check('/api/desktop-releases', 403, 'User cannot manage releases', { headers: user });
 await check('/api/desktop-releases', 403, 'Moderator cannot manage releases', { headers: moderator });
 await check('/api/desktop-releases', 200, 'Administrator can list releases', { headers: admin });
 const form = new FormData();
 form.append('file', new Blob([await readFile('/private/tmp/revex-release-fixture.zip')]), 'fixture.zip');
-await check('/api/desktop-releases', 200, 'Administrator uploads complete release', { method: 'POST', headers: admin, body: form });
+await check('/api/desktop-releases', 200, 'Frontend administrator uploads complete release', { method: 'POST', headers: frontendAdmin, body: form });
 await check('/api/desktop-releases/99.0.1/files/RevEx-win-x64.exe', 404, 'Uploaded installer stays private before activation');
-const activate = (minimum, maximum) => ({ method: 'POST', headers: { ...admin, 'Content-Type': 'application/json' },
+const activate = (minimum, maximum) => ({ method: 'POST', headers: { ...frontendAdmin, 'Content-Type': 'application/json' },
   body: JSON.stringify({ version: '99.0.1', minimumDesktopVersion: minimum, maximumDesktopVersion: maximum }) });
 await check('/api/desktop-releases/99.0.1/activate', 400, 'Invalid compatibility policy rejected', activate('99.0.2', '99.0.3'));
 await check('/api/desktop-releases/99.0.1/activate', 204, 'Valid release activated', activate('99.0.0', '99.0.1'));
