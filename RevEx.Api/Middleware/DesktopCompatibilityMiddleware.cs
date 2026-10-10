@@ -10,15 +10,13 @@ public sealed class DesktopCompatibilityMiddleware(RequestDelegate next)
         var client = context.Request.Headers["X-RevEx-Desktop-Version"].ToString();
         if (client.Length > 0 && context.Request.Path.StartsWithSegments("/api")
             && !context.Request.Path.StartsWithSegments("/api/desktop-releases")
-            && !context.Request.Path.StartsWithSegments("/api/desktop-release"))
+            && !context.Request.Path.StartsWithSegments("/api/desktop-release")
+            && !context.Request.Path.StartsWithSegments("/api/desktop-updates"))
         {
-            var active = await releases.GetActiveAsync(context.RequestAborted);
             var supported = false;
             try
             {
-                var version = DesktopVersions.Parse(client);
-                supported = active != null && version >= DesktopVersions.Parse(active.MinimumDesktopVersion)
-                    && version <= DesktopVersions.Parse(active.MaximumDesktopVersion);
+                supported = await releases.IsSupportedAsync(client, context.RequestAborted);
             }
             catch (ArgumentException) { }
             if (!supported)

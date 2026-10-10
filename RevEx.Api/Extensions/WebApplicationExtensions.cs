@@ -13,6 +13,7 @@ public static class WebApplicationExtensions
         await using var scope = app.Services.CreateAsyncScope();
         var store = scope.ServiceProvider.GetRequiredService<IContentHistoryStore>();
         await store.InitializeAsync();
+        await scope.ServiceProvider.GetRequiredService<IDesktopUpdateTrackingStore>().InitializeAsync();
     }
 
     public static async Task SeedInitialDataAsync(this WebApplication app)

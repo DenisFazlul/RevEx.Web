@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using RevEx.Api.Authorization;
 using RevEx.Application.Abstractions.Storage;
@@ -35,6 +36,30 @@ public sealed class DesktopReleasesController(IDesktopReleaseStore releases) : C
         if (activation.Version != version) return BadRequest(new { message = "Версия в адресе и теле запроса должна совпадать." });
         try { await releases.ActivateAsync(activation, cancellationToken); return NoContent(); }
         catch (ArgumentException exception) { return BadRequest(new { message = exception.Message }); }
+        catch (InvalidOperationException exception) { return Conflict(new { message = exception.Message }); }
+    }
+
+    [HttpPatch("{version}")]
+    public async Task<IActionResult> Edit(string version, [FromBody] DesktopReleaseEdit edit, CancellationToken cancellationToken)
+    {
+        try { return Ok(await releases.EditAsync(version, edit, cancellationToken)); }
+        catch (ArgumentException exception) { return BadRequest(new { message = exception.Message }); }
+    }
+
+    [HttpDelete("{version}")]
+    public async Task<IActionResult> Delete(string version, CancellationToken cancellationToken)
+    {
+        try { await releases.DeleteAsync(version, cancellationToken); return NoContent(); }
+        catch (ArgumentException exception) { return BadRequest(new { message = exception.Message }); }
+        catch (InvalidOperationException exception) { return Conflict(new { message = exception.Message }); }
+    }
+
+    [HttpPost("{version}/restore")]
+    public async Task<IActionResult> Restore(string version, CancellationToken cancellationToken)
+    {
+        try { await releases.RestoreAsync(version, cancellationToken); return NoContent(); }
+        catch (ArgumentException exception) { return BadRequest(new { message = exception.Message }); }
+        catch (InvalidOperationException exception) { return Conflict(new { message = exception.Message }); }
     }
 
     [AllowAnonymous]
@@ -43,7 +68,12 @@ public sealed class DesktopReleasesController(IDesktopReleaseStore releases) : C
     {
         Response.Headers.CacheControl = "no-store";
         var release = await releases.GetActiveAsync(cancellationToken);
-        return release == null ? NotFound(new { message = "Администратор ещё не активировал релиз десктопа." }) : Ok(release);
+        if (release == null) return NotFound(new { message = "Администратор ещё не опубликовал активный релиз десктопа." });
+        // Bridge for installed clients using the previous protocol: require the server-selected target.
+        // Admin policy has no ranges; new clients use /api/desktop-updates/check.
+        return Ok(new { release.BackendVersion, release.RecommendedDesktopVersion,
+            MinimumDesktopVersion = release.RecommendedDesktopVersion, MaximumDesktopVersion = release.RecommendedDesktopVersion,
+            release.UpdatesPath, release.Installers, release.Notes });
     }
 
     [AllowAnonymous]
@@ -51,7 +81,16 @@ public sealed class DesktopReleasesController(IDesktopReleaseStore releases) : C
     public async Task<IActionResult> Download(string version, string fileName, CancellationToken cancellationToken)
     {
         var path = await releases.GetPublicFileAsync(version, fileName, cancellationToken);
-        return path == null ? NotFound() : PhysicalFile(path, fileName.EndsWith(".json") ? "application/json" : "application/octet-stream", fileName, enableRangeProcessing: true);
+        if (path == null) return NotFound();
+        try
+        {
+            var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+            return new TrackedDesktopFileResult(File(stream, "application/octet-stream", fileName, enableRangeProcessing: true),
+                null, version, fileName, User.FindFirstValue("sub") ?? User.FindFirstValue(ClaimTypes.NameIdentifier),
+                User.Identity?.IsAuthenticated == true ? ContentHistoryController.ResolveAuthor(User) : null);
+        }
+        catch (FileNotFoundException) { return NotFound(); }
+        catch (DirectoryNotFoundException) { return NotFound(); }
     }
 }
 
