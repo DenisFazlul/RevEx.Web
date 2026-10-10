@@ -24,10 +24,10 @@ export function DesktopDownloads() {
       <p role="alert" className="release-error">{error}</p>
       <button className="release-button secondary" onClick={() => void load()}>Повторить</button>
     </> : !release ? <p>Администратор ещё не опубликовал сборку десктопа.</p> : <>
-      <p>Последняя одобренная версия для этого сервера: <strong>{release.recommendedDesktopVersion}</strong>.</p>
+      <p>Доступные версии для вашего сервера:</p>
       <div className="download-links">{Object.entries(platformNames).map(([platform, name]) =>
-        release.installers[platform] && <a className="release-button" key={platform} href={desktopFileUrl(release.installers[platform])}><Download size={16}/>{name}</a>)}</div>
-      {release.notes && <p className="release-notes">{release.notes}</p>}
+        release.installers[platform] && <a className="release-button" key={platform} href={desktopFileUrl(release.installers[platform])}><Download size={16}/>{name} · {release.targets?.[platform]?.version ?? release.recommendedDesktopVersion}</a>)}</div>
+
       <p className="connection-note">Скачайте установщик для своей платформы, установите приложение и укажите адрес API вашего сервера. Пакеты выдаются из внутреннего контура.</p>
     </>}
   </section>

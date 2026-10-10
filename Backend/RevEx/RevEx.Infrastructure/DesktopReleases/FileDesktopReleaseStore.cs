@@ -33,7 +33,9 @@ public sealed class FileDesktopReleaseStore : IDesktopReleaseStore
             if (File.Exists(path))
             {
                 var record = JsonSerializer.Deserialize<DesktopReleaseRecord>(File.ReadAllText(path), Json)!;
-                var upgraded = record with { PublishedAt = record.PublishedAt ?? record.UploadedAt, IsActive = true };
+                var publishedAt = record.PublishedAt ?? record.UploadedAt;
+                var upgraded = Normalize(record with { Platforms = record.Manifest.Installers.Keys.ToDictionary(
+                    p => p, _ => new DesktopPlatformState(publishedAt, true)) });
                 var temporary = path + ".migration.tmp";
                 File.WriteAllText(temporary, JsonSerializer.Serialize(upgraded, Json));
                 File.Move(temporary, path, true);
@@ -58,14 +60,14 @@ public sealed class FileDesktopReleaseStore : IDesktopReleaseStore
         foreach (var directory in Directory.EnumerateDirectories(_root).Where(p => !System.IO.Path.GetFileName(p).StartsWith('.')))
         {
             var record = await ReadAsync<DesktopReleaseRecord>(System.IO.Path.Combine(directory, "record.json"), cancellationToken);
-            if (record != null) result.Add(record);
+            if (record != null) result.Add(Normalize(record));
         }
         var trash = System.IO.Path.Combine(_root, ".trash");
         if (Directory.Exists(trash))
             foreach (var directory in Directory.EnumerateDirectories(trash))
             {
                 var record = await ReadAsync<DesktopReleaseRecord>(System.IO.Path.Combine(directory, "record.json"), cancellationToken);
-                if (record != null) result.Add(record with { DeletedAt = record.DeletedAt ?? Directory.GetLastWriteTimeUtc(directory) });
+                if (record != null) result.Add(Normalize(record with { DeletedAt = record.DeletedAt ?? Directory.GetLastWriteTimeUtc(directory) }));
             }
         return result.OrderByDescending(r => DesktopVersions.Parse(r.Manifest.Version)).ToArray();
     }
@@ -78,8 +80,8 @@ public sealed class FileDesktopReleaseStore : IDesktopReleaseStore
         {
             Directory.CreateDirectory(staging);
             using var zip = new ZipArchive(archive, ZipArchiveMode.Read, leaveOpen: true);
-            if (zip.Entries.Count is < 7 or > 32)
-                throw new ArgumentException("Архив должен содержать release.json и полный комплект файлов трёх платформ (не более 32 файлов).");
+            if (zip.Entries.Count is < 4 or > 32)
+                throw new ArgumentException("Архив должен содержать release.json, установщик, feed и полный пакет хотя бы одной платформы (не более 32 файлов).");
             var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             long total = 0;
             foreach (var entry in zip.Entries)
@@ -110,8 +112,10 @@ public sealed class FileDesktopReleaseStore : IDesktopReleaseStore
             DesktopVersions.Parse(manifest.Version);
             if (manifest.Notes == null || manifest.Notes.Length > 12000 || manifest.Installers == null)
                 throw new ArgumentException("Некорректное описание релиза.");
+            if (manifest.Installers.Count == 0 || manifest.Installers.Keys.Any(p => !Platforms.Contains(p)))
+                throw new ArgumentException("Укажите хотя бы одну поддерживаемую платформу: win-x64, osx-x64, osx-arm64.");
             var expected = new HashSet<string>(StringComparer.Ordinal) { "release.json" };
-            foreach (var platform in Platforms)
+            foreach (var platform in manifest.Installers.Keys)
             {
                 if (!manifest.Installers.TryGetValue(platform, out var installer) || !SafeName(installer)
                     || !installer.EndsWith(platform == "win-x64" ? ".exe" : ".pkg", StringComparison.Ordinal))
@@ -139,14 +143,45 @@ public sealed class FileDesktopReleaseStore : IDesktopReleaseStore
                     throw new ArgumentException("Контрольная сумма пакета не совпадает.");
                 ValidatePackageMetadata(package, manifest.Version, platform);
                 expected.Add(feedName);
-                expected.Add(name);
+                if (!expected.Add(name)) throw new ArgumentException("У каждой платформы должен быть отдельный пакет.");
             }
-            if (manifest.Installers.Count != Platforms.Length || !expected.SetEquals(names))
-                throw new ArgumentException("Архив содержит лишние файлы или неполный комплект.");
+            if (!expected.SetEquals(names))
+                throw new ArgumentException("Архив содержит лишние файлы или неполный комплект заявленных платформ.");
             var target = System.IO.Path.Combine(_root, manifest.Version);
-            if (Directory.Exists(target) || Directory.Exists(System.IO.Path.Combine(_root, ".trash", manifest.Version)))
-                throw new InvalidOperationException("Эта версия уже загружена или находится в корзине. Восстановите её либо выпустите новую версию.");
-            var record = new DesktopReleaseRecord(manifest, DateTimeOffset.UtcNow);
+            if (Directory.Exists(System.IO.Path.Combine(_root, ".trash", manifest.Version)))
+                throw new InvalidOperationException("Эта версия находится в корзине. Сначала восстановите её.");
+            var existing = await ReadAsync<DesktopReleaseRecord>(System.IO.Path.Combine(target, "record.json"), cancellationToken);
+            if (existing != null)
+            {
+                existing = Normalize(existing);
+                if (manifest.Installers.Keys.Any(existing.Manifest.Installers.ContainsKey))
+                    throw new InvalidOperationException("Эта версия для указанной платформы уже загружена. Замена пакетов запрещена; выпустите новую версию.");
+                var installers = new Dictionary<string, string>(existing.Manifest.Installers);
+                var states = new Dictionary<string, DesktopPlatformState>(existing.Platforms!);
+                foreach (var item in manifest.Installers) { installers.Add(item.Key, item.Value); states.Add(item.Key, new()); }
+                var updated = Normalize(existing with { Manifest = existing.Manifest with { Installers = installers }, Platforms = states });
+                var addedFiles = expected.Where(n => n != "release.json").ToArray();
+                if (addedFiles.Any(n => File.Exists(System.IO.Path.Combine(target, n))))
+                    throw new InvalidOperationException("Имена файлов пересекаются с уже загруженной сборкой.");
+                var copied = new List<string>();
+                try
+                {
+                    foreach (var name in addedFiles)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var path = System.IO.Path.Combine(target, name);
+                        File.Move(System.IO.Path.Combine(staging, name), path);
+                        copied.Add(path);
+                    }
+                    // The record is the commit point: new platforms become visible together.
+                    await WriteAtomicAsync(System.IO.Path.Combine(target, "record.json"), updated, cancellationToken);
+                }
+                catch { foreach (var path in copied) File.Delete(path); throw; }
+                return updated;
+            }
+            if (Directory.Exists(target)) throw new InvalidOperationException("Каталог версии уже существует без метаданных.");
+            var record = Normalize(new DesktopReleaseRecord(manifest, DateTimeOffset.UtcNow,
+                Platforms: manifest.Installers.Keys.ToDictionary(p => p, _ => new DesktopPlatformState())));
             await WriteAtomicAsync(System.IO.Path.Combine(staging, "record.json"), record, cancellationToken);
             Directory.Move(staging, target);
             return record;
@@ -170,18 +205,25 @@ public sealed class FileDesktopReleaseStore : IDesktopReleaseStore
         {
             var record = await ReadAsync<DesktopReleaseRecord>(System.IO.Path.Combine(_root, activation.Version, "record.json"), cancellationToken)
                 ?? throw new ArgumentException("Релиз не найден.");
-            if (!activation.IsActive)
+            record = Normalize(record);
+            var selected = activation.Platform == null ? record.Manifest.Installers.Keys.ToArray() : [activation.Platform];
+            if (selected.Any(p => !record.Manifest.Installers.ContainsKey(p)))
+                throw new ArgumentException("Сборка для выбранной платформы ещё не загружена.");
+            var states = new Dictionary<string, DesktopPlatformState>(record.Platforms!);
+            var records = await ListCoreAsync(cancellationToken);
+            foreach (var platform in selected)
             {
-                if (record.PublishedAt == null) throw new ArgumentException("Черновик ещё не опубликован.");
-                if (record.IsActive && !(await ListCoreAsync(cancellationToken)).Any(r => r.IsActive && r.DeletedAt == null && r.Manifest.Version != activation.Version))
-                    throw new InvalidOperationException("Нельзя отключить последнюю активную версию. Сначала включите другую.");
-                await WriteAtomicAsync(System.IO.Path.Combine(_root, activation.Version, "record.json"), record with { IsActive = false }, cancellationToken);
-                return;
-            }
-            foreach (var file in record.Manifest.Installers.Values) RequireFile(System.IO.Path.Combine(_root, activation.Version), file);
-            foreach (var platform in Platforms)
-            {
+                var state = states[platform];
+                if (!activation.IsActive)
+                {
+                    if (state.PublishedAt == null) throw new ArgumentException("Сборка для этой платформы ещё не опубликована.");
+                    if (state.IsActive && !records.Any(r => r.Manifest.Version != activation.Version && Active(r, platform)))
+                        throw new InvalidOperationException($"Нельзя отключить последнюю активную сборку {platform}. Сначала включите другую версию для этой платформы.");
+                    states[platform] = state with { IsActive = false };
+                    continue;
+                }
                 var directory = System.IO.Path.Combine(_root, activation.Version);
+                RequireFile(directory, record.Manifest.Installers[platform]);
                 using var feed = JsonDocument.Parse(await File.ReadAllTextAsync(RequireFile(directory, $"releases.{platform}.json"), cancellationToken));
                 var asset = feed.RootElement.GetProperty("Assets")[0];
                 var name = asset.GetProperty("FileName").GetString() ?? "";
@@ -191,9 +233,10 @@ public sealed class FileDesktopReleaseStore : IDesktopReleaseStore
                 var hash = Convert.ToHexString(await SHA256.HashDataAsync(stream, cancellationToken));
                 if (!hash.Equals(asset.GetProperty("SHA256").GetString(), StringComparison.OrdinalIgnoreCase))
                     throw new ArgumentException("Пакет изменён после загрузки. Активация запрещена.");
+                states[platform] = new(state.PublishedAt ?? DateTimeOffset.UtcNow, true);
             }
             await WriteAtomicAsync(System.IO.Path.Combine(_root, activation.Version, "record.json"),
-                record with { PublishedAt = record.PublishedAt ?? DateTimeOffset.UtcNow, IsActive = true }, cancellationToken);
+                Normalize(record with { Platforms = states }), cancellationToken);
         }
         finally { _mutation.Release(); }
     }
@@ -250,25 +293,39 @@ public sealed class FileDesktopReleaseStore : IDesktopReleaseStore
         finally { _mutation.Release(); }
     }
 
-    public async Task<DesktopReleaseInfo?> GetActiveAsync(CancellationToken cancellationToken)
+    public async Task<DesktopReleaseInfo?> GetActiveAsync(CancellationToken cancellationToken, string? platform = null, bool legacy = false)
     {
+        if (platform != null && !Platforms.Contains(platform)) throw new ArgumentException("ОС или архитектура не поддерживается.");
         await _mutation.WaitAsync(cancellationToken);
         try
         {
-            var record = (await ListCoreAsync(cancellationToken)).FirstOrDefault(r => r.IsActive && r.PublishedAt != null && r.DeletedAt == null);
-            if (record == null) return null;
-            var path = $"api/desktop-releases/{record.Manifest.Version}/files/";
+            var records = await ListCoreAsync(cancellationToken);
+            if (legacy && platform == null)
+                records = records.Where(r => Platforms.All(p => Active(r, p))).ToArray();
+            var targets = new Dictionary<string, DesktopPlatformTarget>();
+            foreach (var p in platform == null ? Platforms : [platform])
+            {
+                var record = records.FirstOrDefault(r => Active(r, p));
+                if (record == null) continue;
+                var path = $"api/desktop-releases/{record.Manifest.Version}/files/";
+                targets[p] = new(record.Manifest.Version, path + record.Manifest.Installers[p], record.Manifest.Notes);
+            }
+            if (targets.Count == 0) return null;
+            var latest = targets.Values.OrderByDescending(t => DesktopVersions.Parse(t.Version)).First();
             return new DesktopReleaseInfo(Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "unknown",
-                record.Manifest.Version, path,
-                record.Manifest.Installers.ToDictionary(p => p.Key, p => path + p.Value), record.Manifest.Notes);
+                latest.Version, $"api/desktop-releases/{latest.Version}/files/",
+                targets.ToDictionary(p => p.Key, p => p.Value.Installer), latest.Notes, targets);
         }
         finally { _mutation.Release(); }
     }
 
-    public async Task<bool> IsSupportedAsync(string version, CancellationToken cancellationToken)
+    public async Task<bool> IsSupportedAsync(string version, CancellationToken cancellationToken, string? platform = null)
     {
         DesktopVersions.Parse(version);
-        return (await ListAsync(cancellationToken)).Any(r => r.Manifest.Version == version && r.IsActive && r.PublishedAt != null && r.DeletedAt == null);
+        if (platform != null && !Platforms.Contains(platform)) throw new ArgumentException("ОС или архитектура не поддерживается.");
+        var record = (await ListAsync(cancellationToken)).FirstOrDefault(r => r.Manifest.Version == version);
+        // Old clients without a platform header must be supported on every supported OS.
+        return record != null && (platform == null ? Platforms.All(p => Active(record, p)) : Active(record, platform));
     }
 
     public async Task<DesktopPolicy?> CheckAsync(string version, string platform, CancellationToken cancellationToken)
@@ -279,11 +336,11 @@ public sealed class FileDesktopReleaseStore : IDesktopReleaseStore
         try
         {
             var records = await ListCoreAsync(cancellationToken);
-            var target = records.FirstOrDefault(r => r.IsActive && r.PublishedAt != null && r.DeletedAt == null);
+            var target = records.FirstOrDefault(r => Active(r, platform));
             if (target == null) return null;
             var targetVersion = target.Manifest.Version;
             if (version == targetVersion) return new("current", targetVersion, target.Manifest.Notes, null, false);
-            var supported = records.Any(r => r.Manifest.Version == version && r.IsActive && r.PublishedAt != null && r.DeletedAt == null);
+            var supported = records.Any(r => r.Manifest.Version == version && Active(r, platform));
             using var feed = JsonDocument.Parse(await File.ReadAllTextAsync(RequireFile(System.IO.Path.Combine(_root, targetVersion), $"releases.{platform}.json"), cancellationToken));
             var asset = feed.RootElement.GetProperty("Assets")[0];
             var package = new DesktopPackage(targetVersion, platform, asset.GetProperty("FileName").GetString()!,
@@ -299,6 +356,13 @@ public sealed class FileDesktopReleaseStore : IDesktopReleaseStore
         if (!SafeName(fileName) || !fileName.EndsWith(".nupkg", StringComparison.Ordinal)) return null;
         var record = (await ListAsync(cancellationToken)).FirstOrDefault(r => r.Manifest.Version == version && r.PublishedAt != null && r.DeletedAt == null);
         if (record == null) return null;
+        var allowed = false;
+        foreach (var platform in record.Manifest.Installers.Keys.Where(p => Published(record, p)))
+        {
+            using var feed = JsonDocument.Parse(await File.ReadAllTextAsync(RequireFile(System.IO.Path.Combine(_root, version), $"releases.{platform}.json"), cancellationToken));
+            if (fileName == feed.RootElement.GetProperty("Assets")[0].GetProperty("FileName").GetString()) allowed = true;
+        }
+        if (!allowed) return null;
         var path = System.IO.Path.Combine(_root, version, fileName);
         return File.Exists(path) ? path : null;
     }
@@ -309,9 +373,9 @@ public sealed class FileDesktopReleaseStore : IDesktopReleaseStore
         if (!SafeName(fileName)) return null;
         var record = (await ListAsync(cancellationToken)).FirstOrDefault(r => r.Manifest.Version == version && r.PublishedAt != null && r.DeletedAt == null);
         if (record == null) return null;
-        var allowed = record.Manifest.Installers.Values.Contains(fileName);
+        var allowed = record.Manifest.Installers.Any(p => p.Value == fileName && Published(record, p.Key));
         // Legacy installed clients need their feed and package to acquire the new updater.
-        foreach (var platform in Platforms)
+        foreach (var platform in record.Manifest.Installers.Keys.Where(p => Published(record, p)))
         {
             var feedName = $"releases.{platform}.json";
             if (fileName == feedName) allowed = true;
@@ -322,6 +386,19 @@ public sealed class FileDesktopReleaseStore : IDesktopReleaseStore
         var path = System.IO.Path.Combine(_root, version, fileName);
         return File.Exists(path) ? path : null;
     }
+
+    private static DesktopReleaseRecord Normalize(DesktopReleaseRecord record)
+    {
+        var states = record.Platforms ?? record.Manifest.Installers.Keys.ToDictionary(p => p,
+            _ => new DesktopPlatformState(record.PublishedAt, record.IsActive));
+        return record with { Platforms = states, IsActive = states.Values.Any(s => s.IsActive),
+            PublishedAt = states.Values.Where(s => s.PublishedAt != null).Select(s => s.PublishedAt).Min() };
+    }
+    private static bool Published(DesktopReleaseRecord record, string platform)
+        => record.DeletedAt == null && record.Manifest.Installers.ContainsKey(platform)
+            && Normalize(record).Platforms!.TryGetValue(platform, out var state) && state.PublishedAt != null;
+    private static bool Active(DesktopReleaseRecord record, string platform)
+        => Published(record, platform) && Normalize(record).Platforms![platform].IsActive;
 
     private static bool SafeName(string name) => !string.IsNullOrWhiteSpace(name) && name.Length <= 180
         && name[0] != '.' && name.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '_');

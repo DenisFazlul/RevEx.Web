@@ -90,7 +90,7 @@ h2 { font:600 27px/1.2 'Playfair Display',serif; margin:22px 0 12px; }
 .release-editor-heading h2 { font:600 30px/1.2 system-ui,sans-serif; margin:8px 0 0; color:var(--ink); }
 .release-editor-heading .eyebrow { font-size:10px; }
 .release-manager label,.release-dialog label { display:block; font-size:13px; font-weight:600; margin-bottom:14px; }
-.release-editor input,.release-editor textarea,.release-dialog input { display:block; width:100%; margin-top:8px; padding:12px; border:1px solid var(--line); border-radius:8px; background:white; color:var(--ink); font:inherit; }
+.release-editor input,.release-editor textarea,.release-editor select,.release-dialog input { display:block; width:100%; margin-top:8px; padding:12px; border:1px solid var(--line); border-radius:8px; background:white; color:var(--ink); font:inherit; }
 .release-editor input[readonly] { background:#efece4; color:#64706a; }
 .release-editor textarea { resize:vertical; min-height:110px; }
 .release-editor fieldset,.release-dialog fieldset { border:0; margin:0; padding:0; min-width:0; }
@@ -125,3 +125,5 @@ h2 { font:600 27px/1.2 'Playfair Display',serif; margin:22px 0 12px; }
 .release-history-card>.release-help { padding:16px 20px 0; }
 .release-history-card .release-table td { padding:16px 20px; font-size:13px; overflow-wrap:anywhere; }
 .release-history-card .release-table th { white-space:nowrap; }
+
+.release-platform-statuses { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; color: var(--muted); font-size: 12px; }

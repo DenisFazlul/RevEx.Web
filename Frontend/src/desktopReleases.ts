@@ -3,6 +3,7 @@ import { keycloak } from './auth'
 export type DesktopRelease = {
   backendVersion: string
   recommendedDesktopVersion: string
+  targets?: Record<string, { version: string; installer: string; notes: string }>
   updatesPath: string
   installers: Record<string, string>
   notes: string
@@ -12,6 +13,7 @@ export type ReleaseRecord = {
   uploadedAt: string
   publishedAt?: string | null
   isActive: boolean
+  platforms?: Record<string, { publishedAt?: string | null; isActive: boolean }>
   deletedAt?: string | null
 }
 
@@ -36,7 +38,7 @@ async function request<T>(path: string, options?: RequestInit, admin = false, al
 
 export const desktopReleases = {
   history: () => request<DesktopUpdateHistory>('api/desktop-updates/history?limit=500', undefined, true),
-  active: () => request<DesktopRelease | null>('api/desktop-release', undefined, false, true),
+  active: () => request<DesktopRelease | null>('api/desktop-installers', undefined, false, true),
   list: () => request<ReleaseRecord[]>('api/desktop-releases', undefined, true),
   edit: (version: string, notes: string) => request<ReleaseRecord>(`api/desktop-releases/${encodeURIComponent(version)}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notes }),
@@ -48,10 +50,10 @@ export const desktopReleases = {
     data.append('file', file)
     return request<ReleaseRecord>('api/desktop-releases', { method: 'POST', body: data }, true)
   },
-  activate: (version: string, isActive: boolean) =>
+  activate: (version: string, isActive: boolean, platform?: string) =>
     request<void>(`api/desktop-releases/${encodeURIComponent(version)}/activate`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ version, isActive }),
+      body: JSON.stringify({ version, isActive, platform }),
     }, true),
 }
 

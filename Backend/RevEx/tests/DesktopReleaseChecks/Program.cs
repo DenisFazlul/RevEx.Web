@@ -116,6 +116,50 @@ try
     var migratedStore = new FileDesktopReleaseStore(legacyOptions);
     Check((await migratedStore.GetActiveAsync(ct))?.RecommendedDesktopVersion == "1.0.0"
         && File.Exists(Path.Combine(legacyOptions.Path, "active.json.legacy")), "Legacy active policy migrated without losing target or source file");
+    var separate = new FileDesktopReleaseStore(new() { Path = Path.Combine(root, "separate") });
+    using var windowsOnly = Archive("3.0.0", platforms: ["win-x64"]);
+    var windowsRecord = await separate.UploadAsync(windowsOnly, ct);
+    Check(windowsRecord.Manifest.Installers.Count == 1, "Windows-only archive accepted");
+    await separate.ActivateAsync(new("3.0.0", Platform: "win-x64"), ct);
+    Check((await separate.CheckAsync("3.0.0", "win-x64", ct))?.Decision == "current", "Windows-only release usable immediately");
+    Check(await separate.CheckAsync("3.0.0", "osx-x64", ct) == null, "Missing macOS target does not fall back to Windows");
+    await Reject(() => separate.ActivateAsync(new("3.0.0", Platform: "osx-x64"), ct), "Missing platform cannot be activated");
+    Check(await separate.IsSupportedAsync("3.0.0", ct, "win-x64") && !await separate.IsSupportedAsync("3.0.0", ct, "osx-x64"), "Compatibility is scoped to platform");
+    Check(!await separate.IsSupportedAsync("3.0.0", ct) && await separate.GetActiveAsync(ct, legacy: true) == null, "Legacy clients cannot use a misleading partial release");
+    using var macLater = Archive("3.0.0", platforms: ["osx-x64", "osx-arm64"]);
+    var merged = await separate.UploadAsync(macLater, ct);
+    Check(merged.Platforms!["win-x64"].IsActive && merged.Platforms["osx-x64"].PublishedAt == null, "Appending macOS preserves Windows activity and stages new platforms");
+    Check(await separate.GetPublicFileAsync("3.0.0", "RevEx-osx-x64.pkg", ct) == null
+        && await separate.GetPublicFileAsync("3.0.0", "releases.osx-x64.json", ct) == null
+        && await separate.GetPublishedPackageAsync("3.0.0", "RevEx-3.0.0-osx-x64-full.nupkg", ct) == null, "Draft platforms stay private inside a published version");
+    Check(await separate.GetPublicFileAsync("3.0.0", "RevEx-win-x64.exe", ct) != null, "Appending platforms preserves published downloads");
+    using var overlap = Archive("3.0.0", platforms: ["win-x64", "osx-arm64"]);
+    await Reject(() => separate.UploadAsync(overlap, ct), "Existing version/platform cannot be replaced");
+    await separate.ActivateAsync(new("3.0.0", Platform: "osx-x64"), ct);
+    Check(await separate.GetPublicFileAsync("3.0.0", "RevEx-osx-x64.pkg", ct) != null
+        && await separate.GetPublicFileAsync("3.0.0", "RevEx-osx-arm64.pkg", ct) == null, "Publication is independent for macOS architectures");
+    using var macNew = Archive("3.1.0", platforms: ["osx-x64"]);
+    await separate.UploadAsync(macNew, ct);
+    await separate.ActivateAsync(new("3.1.0", Platform: "osx-x64"), ct);
+    var separateTargets = await separate.GetActiveAsync(ct);
+    Check(separateTargets!.Targets!["win-x64"].Version == "3.0.0" && separateTargets.Targets["osx-x64"].Version == "3.1.0", "Public installers select separate versions per platform");
+    Check((await separate.CheckAsync("3.0.0", "win-x64", ct))?.Decision == "current"
+        && (await separate.CheckAsync("3.0.0", "osx-x64", ct)) is { Decision: "optional", TargetVersion: "3.1.0" }, "Windows is not updated when only macOS has a newer release");
+    var pinnedMac = (await separate.CheckAsync("3.0.0", "osx-x64", ct))!.Package!;
+    await separate.ActivateAsync(new("3.1.0", false, "osx-x64"), ct);
+    Check((await separate.CheckAsync("3.1.0", "osx-x64", ct)) is { IsDowngrade: true, TargetVersion: "3.0.0" }
+        && (await separate.CheckAsync("3.0.0", "win-x64", ct))?.Decision == "current", "macOS rollback leaves Windows target unchanged");
+    Check(await separate.GetPublishedPackageAsync(pinnedMac.Version, pinnedMac.FileName, ct) != null, "Pinned platform offer survives rollback");
+    await Reject(() => separate.ActivateAsync(new("3.0.0", false, "win-x64"), ct), "Active macOS release cannot justify disabling last Windows target");
+    await separate.ActivateAsync(new("3.0.0", Platform: "osx-arm64"), ct);
+    Check(await separate.IsSupportedAsync("3.0.0", ct), "All-platform legacy compatibility remains available");
+    var restartedSeparate = new FileDesktopReleaseStore(new() { Path = Path.Combine(root, "separate") });
+    Check((await restartedSeparate.GetActiveAsync(ct))!.Targets!["osx-x64"].Version == "3.0.0", "Platform policy survives restart");
+    using var emptyPlatforms = Archive("4.0.0", platforms: []);
+    await Reject(() => separate.UploadAsync(emptyPlatforms, ct), "Empty platform archive rejected");
+    using var unknownPlatform = Archive("4.0.0", platforms: ["linux-x64"]);
+    await Reject(() => separate.UploadAsync(unknownPlatform, ct), "Unknown archive platform rejected");
+
     if (args.Length == 2 && args[0] == "--write-fixture")
     {
         using var fixture = Archive("99.0.1");
@@ -124,29 +168,36 @@ try
         await File.WriteAllBytesAsync(args[1] + ".second.zip", secondFixture.ToArray());
         using var thirdFixture = Archive("99.0.3");
         await File.WriteAllBytesAsync(args[1] + ".third.zip", thirdFixture.ToArray());
+        using var windowsFixture = Archive("99.0.4", platforms: ["win-x64"]);
+        await File.WriteAllBytesAsync(args[1] + ".windows.zip", windowsFixture.ToArray());
+        using var macFixture = Archive("99.0.4", platforms: ["osx-x64", "osx-arm64"]);
+        await File.WriteAllBytesAsync(args[1] + ".mac.zip", macFixture.ToArray());
         Console.WriteLine("Test-only fixture created (not a runnable desktop installer).");
     }
-    if (args.Length == 2 && args[0] == "--validate-archive")
+    if (args.Length >= 2 && args[0] is "--validate-archive" or "--validate-archives")
     {
         var actual = new FileDesktopReleaseStore(new() { Path = Path.Combine(root, "actual") });
-        await using var input = File.OpenRead(args[1]);
-        var record = await actual.UploadAsync(input, ct);
-        var version = record.Manifest.Version;
-        await actual.ActivateAsync(new(version), ct);
-        Check((await actual.GetActiveAsync(ct))?.RecommendedDesktopVersion == version, "Real CI archive accepted and activated in isolated storage");
-        foreach (var installer in record.Manifest.Installers)
-            Check(await actual.GetPublicFileAsync(version, installer.Value, ct) != null, "Real installer available: " + installer.Key);
+        foreach (var archivePath in args.Skip(1))
+        {
+            await using var input = File.OpenRead(archivePath);
+            var record = await actual.UploadAsync(input, ct);
+            var version = record.Manifest.Version;
+            await actual.ActivateAsync(new(version), ct);
+            Check((await actual.GetActiveAsync(ct))?.RecommendedDesktopVersion == version, "Real CI archive accepted and activated in isolated storage");
+            foreach (var installer in record.Manifest.Installers)
+                Check(await actual.GetPublicFileAsync(version, installer.Value, ct) != null, "Real installer available: " + installer.Key);
+        }
     }
 }
 finally { Directory.Delete(root, recursive: true); }
 
-static MemoryStream Archive(string version, string? extra = null, bool badHash = false, bool wrongPlatform = false)
+static MemoryStream Archive(string version, string? extra = null, bool badHash = false, bool wrongPlatform = false, string[]? platforms = null)
 {
     var stream = new MemoryStream();
     using (var zip = new ZipArchive(stream, ZipArchiveMode.Create, true))
     {
         var installers = new Dictionary<string, string>();
-        foreach (var platform in new[] { "win-x64", "osx-x64", "osx-arm64" })
+        foreach (var platform in platforms ?? ["win-x64", "osx-x64", "osx-arm64"])
         {
             var installer = $"RevEx-{platform}." + (platform == "win-x64" ? "exe" : "pkg");
             installers.Add(platform, installer);

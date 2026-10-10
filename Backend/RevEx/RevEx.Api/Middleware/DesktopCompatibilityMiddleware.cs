@@ -11,12 +11,15 @@ public sealed class DesktopCompatibilityMiddleware(RequestDelegate next)
         if (client.Length > 0 && context.Request.Path.StartsWithSegments("/api")
             && !context.Request.Path.StartsWithSegments("/api/desktop-releases")
             && !context.Request.Path.StartsWithSegments("/api/desktop-release")
-            && !context.Request.Path.StartsWithSegments("/api/desktop-updates"))
+            && !context.Request.Path.StartsWithSegments("/api/desktop-updates")
+            && !context.Request.Path.StartsWithSegments("/api/desktop-installers"))
         {
             var supported = false;
             try
             {
-                supported = await releases.IsSupportedAsync(client, context.RequestAborted);
+                var platform = context.Request.Headers["X-RevEx-Desktop-Platform"].ToString();
+                supported = await releases.IsSupportedAsync(client, context.RequestAborted,
+                    string.IsNullOrEmpty(platform) ? null : platform);
             }
             catch (ArgumentException) { }
             if (!supported)
