@@ -1,4 +1,4 @@
-// Apply only the frontend API audience mapper to an existing LOCAL development realm.
+// Apply frontend API audience and existing-role claim mappings to a LOCAL development realm.
 // Realm imports do not update an already-created realm on container restart.
 import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
@@ -21,11 +21,14 @@ async function request(path, options = {}) {
 const clients = await (await request('clients?clientId=revex-frontend')).json();
 assert.equal(clients.length, 1, 'Expected exactly one frontend client');
 const path = `clients/${clients[0].id}/protocol-mappers/models`;
-const mapper = JSON.parse(await readFile(new URL('./revex-realm.json', import.meta.url), 'utf8'))
-  .clients.find(client => client.clientId === 'revex-frontend').protocolMappers[0];
-const existing = (await (await request(path)).json()).find(item => item.name === mapper.name);
-if (existing) {
-  assert.equal(existing.protocolMapper, mapper.protocolMapper, 'Unexpected existing mapper type');
-  await request(path + '/' + existing.id, { method: 'PUT', body: JSON.stringify({ ...existing, ...mapper }) });
-} else await request(path, { method: 'POST', body: JSON.stringify(mapper) });
-console.log('Frontend API audience configured. Sign in again to obtain a new token.');
+const mappers = JSON.parse(await readFile(new URL('./revex-realm.json', import.meta.url), 'utf8'))
+  .clients.find(client => client.clientId === 'revex-frontend').protocolMappers;
+const current = await (await request(path)).json();
+for (const mapper of mappers) {
+  const existing = current.find(item => item.name === mapper.name);
+  if (existing) {
+    assert.equal(existing.protocolMapper, mapper.protocolMapper, 'Unexpected existing mapper type');
+    await request(path + '/' + existing.id, { method: 'PUT', body: JSON.stringify({ ...existing, ...mapper }) });
+  } else await request(path, { method: 'POST', body: JSON.stringify(mapper) });
+}
+console.log('Frontend API audience and existing-role claims configured. Sign in again for a new token.');
