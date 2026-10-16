@@ -21,3 +21,9 @@ The application is available at:
 
 For standalone API development, provide the PostgreSQL connection string through
 the `ContentHistory__ConnectionString` environment variable.
+
+## API documentation
+
+See [OpenAPI and API usage](Backend/RevEx/docs/README.md) and
+[entities and relationships](Backend/RevEx/docs/ENTITIES.md).
+The versioned [OpenAPI JSON](Backend/RevEx/docs/openapi.json) can be imported into API clients.

@@ -33,7 +33,8 @@ public sealed class ContentFilesController(
     }
 
     [HttpGet("{id:int}/content")]
-    [ProducesResponseType<FileStreamResult>(StatusCodes.Status200OK)]
+    [Produces("application/octet-stream")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetContent(int id, CancellationToken cancellationToken)
     {

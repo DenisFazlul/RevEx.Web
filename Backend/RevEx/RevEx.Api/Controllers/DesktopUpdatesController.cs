@@ -14,6 +14,10 @@ public sealed class DesktopUpdatesController(IDesktopReleaseStore releases, IDes
 {
     [AllowAnonymous]
     [HttpPost("check")]
+    [ProducesResponseType<DesktopUpdateResponse>(200)]
+    [ProducesResponseType(400)]
+    [ProducesResponseType(401)]
+    [ProducesResponseType(503)]
     public async Task<IActionResult> Check(DesktopInstallationRequest request, CancellationToken cancellationToken)
     {
         Response.Headers.CacheControl = "no-store";
@@ -32,6 +36,9 @@ public sealed class DesktopUpdatesController(IDesktopReleaseStore releases, IDes
 
     [Authorize]
     [HttpPost("report")]
+    [ProducesResponseType(204)]
+    [ProducesResponseType(400)]
+    [ProducesResponseType(401)]
     public async Task<IActionResult> Report(DesktopInstallationRequest request, CancellationToken cancellationToken)
     {
         var userId = User.FindFirstValue("sub") ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -47,11 +54,14 @@ public sealed class DesktopUpdatesController(IDesktopReleaseStore releases, IDes
 
     [Authorize(Policy = RevExPolicies.AdministerCatalog)]
     [HttpGet("history")]
+    [ProducesResponseType<DesktopUpdateHistory>(200)]
     public async Task<IActionResult> History([FromQuery] int limit = 200, CancellationToken cancellationToken = default)
         => Ok(await tracking.GetHistoryAsync(limit, cancellationToken));
 
     [AllowAnonymous]
     [HttpPost("offers/{id:guid}/failure")]
+    [ProducesResponseType(204)]
+    [ProducesResponseType(400)]
     public async Task<IActionResult> Failure(Guid id, DesktopUpdateFailure request,
         [FromHeader(Name = "X-RevEx-Installation-Key")] string key, CancellationToken cancellationToken)
     {
@@ -61,6 +71,10 @@ public sealed class DesktopUpdatesController(IDesktopReleaseStore releases, IDes
 
     [AllowAnonymous]
     [HttpGet("offers/{id:guid}/package")]
+    [Produces("application/octet-stream")]
+    [ProducesResponseType(200)]
+    [ProducesResponseType(206)]
+    [ProducesResponseType(404)]
     public async Task<IActionResult> Download(Guid id, [FromHeader(Name = "X-RevEx-Installation-Key")] string key, CancellationToken cancellationToken)
     {
         var offer = await tracking.GetOfferAsync(id, key, cancellationToken);
