@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { RevitReleases } from './RevitReleases'
 import { Download } from 'lucide-react'
 import { desktopFileUrl, desktopReleases, type DesktopRelease } from '../desktopReleases'
 
@@ -17,7 +18,7 @@ export function DesktopDownloads() {
     finally { setLoading(false) }
   }
   useEffect(() => { void load() }, [])
-  return <section className="connection-card desktop-downloads">
+  return <><section className="connection-card desktop-downloads">
     <span className="connection-icon"><Download size={24}/></span>
     <h2>Скачать RevEx Desktop</h2>
     {loading ? <p role="status">Проверяем доступную версию…</p> : error ? <>
@@ -30,5 +31,5 @@ export function DesktopDownloads() {
 
       <p className="connection-note">Скачайте установщик для своей платформы, установите приложение и укажите адрес API вашего сервера. Пакеты выдаются из внутреннего контура.</p>
     </>}
-  </section>
+  </section><RevitReleases/></>
 }

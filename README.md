@@ -27,3 +27,15 @@ the `ContentHistory__ConnectionString` environment variable.
 See [OpenAPI and API usage](Backend/RevEx/docs/README.md) and
 [entities and relationships](Backend/RevEx/docs/ENTITIES.md).
 The versioned [OpenAPI JSON](Backend/RevEx/docs/openapi.json) can be imported into API clients.
+
+## Сборки для Revit
+
+В «Администрирование → Сборки для Revit» администратор загружает EXE, MSI или ZIP
+(до 1 ГБ), указывает версию RevEx в формате `1.2.3`, год Revit и описание изменений.
+Загрузка создаёт черновик. Кнопка «Опубликовать» открывает скачивание; публикацию
+можно снять. Повторная загрузка той же версии для того же года Revit запрещена.
+На странице скачивания показывается последняя опубликованная версия для каждого
+года Revit. Установка и обновление выполняются вручную.
+
+Сборки Revit хранятся отдельно в подкаталоге `.revit` каталога `DesktopReleases:Path`,
+в существующем Docker volume. Они не участвуют в проверках обновлений Desktop.
