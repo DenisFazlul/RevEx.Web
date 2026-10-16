@@ -13,11 +13,15 @@ namespace RevEx.Api.Controllers;
 public sealed class DesktopReleasesController(IDesktopReleaseStore releases) : ControllerBase
 {
     [HttpGet]
+    [ProducesResponseType<IReadOnlyList<DesktopReleaseRecord>>(200)]
     public async Task<IActionResult> List(CancellationToken cancellationToken) => Ok(await releases.ListAsync(cancellationToken));
 
     [HttpPost]
     [RequestSizeLimit(1073741824)]
     [RequestFormLimits(MultipartBodyLengthLimit = 1073741824)]
+    [ProducesResponseType<DesktopReleaseRecord>(200)]
+    [ProducesResponseType(400)]
+    [ProducesResponseType(409)]
     public async Task<IActionResult> Upload([FromForm] DesktopReleaseUpload request, CancellationToken cancellationToken)
     {
         if (request.File == null || request.File.Length == 0) return BadRequest(new { message = "Выберите ZIP-архив релиза." });
@@ -31,6 +35,9 @@ public sealed class DesktopReleasesController(IDesktopReleaseStore releases) : C
     }
 
     [HttpPost("{version}/activate")]
+    [ProducesResponseType(204)]
+    [ProducesResponseType(400)]
+    [ProducesResponseType(409)]
     public async Task<IActionResult> Activate(string version, [FromBody] DesktopReleaseActivation activation, CancellationToken cancellationToken)
     {
         if (activation.Version != version) return BadRequest(new { message = "Версия в адресе и теле запроса должна совпадать." });
@@ -40,6 +47,8 @@ public sealed class DesktopReleasesController(IDesktopReleaseStore releases) : C
     }
 
     [HttpPatch("{version}")]
+    [ProducesResponseType<DesktopReleaseRecord>(200)]
+    [ProducesResponseType(400)]
     public async Task<IActionResult> Edit(string version, [FromBody] DesktopReleaseEdit edit, CancellationToken cancellationToken)
     {
         try { return Ok(await releases.EditAsync(version, edit, cancellationToken)); }
@@ -47,6 +56,9 @@ public sealed class DesktopReleasesController(IDesktopReleaseStore releases) : C
     }
 
     [HttpDelete("{version}")]
+    [ProducesResponseType(204)]
+    [ProducesResponseType(400)]
+    [ProducesResponseType(409)]
     public async Task<IActionResult> Delete(string version, CancellationToken cancellationToken)
     {
         try { await releases.DeleteAsync(version, cancellationToken); return NoContent(); }
@@ -55,6 +67,9 @@ public sealed class DesktopReleasesController(IDesktopReleaseStore releases) : C
     }
 
     [HttpPost("{version}/restore")]
+    [ProducesResponseType(204)]
+    [ProducesResponseType(400)]
+    [ProducesResponseType(409)]
     public async Task<IActionResult> Restore(string version, CancellationToken cancellationToken)
     {
         try { await releases.RestoreAsync(version, cancellationToken); return NoContent(); }
@@ -64,6 +79,9 @@ public sealed class DesktopReleasesController(IDesktopReleaseStore releases) : C
 
     [AllowAnonymous]
     [HttpGet("/api/desktop-release")]
+    [ProducesResponseType<LegacyDesktopReleaseInfo>(200)]
+    [ProducesResponseType(400)]
+    [ProducesResponseType(404)]
     public async Task<IActionResult> Active(CancellationToken cancellationToken, [FromQuery] string? platform = null)
     {
         Response.Headers.CacheControl = "no-store";
@@ -82,6 +100,8 @@ public sealed class DesktopReleasesController(IDesktopReleaseStore releases) : C
 
     [AllowAnonymous]
     [HttpGet("/api/desktop-installers")]
+    [ProducesResponseType<DesktopReleaseInfo>(200)]
+    [ProducesResponseType(404)]
     public async Task<IActionResult> Installers(CancellationToken cancellationToken)
     {
         Response.Headers.CacheControl = "no-store";
@@ -91,6 +111,10 @@ public sealed class DesktopReleasesController(IDesktopReleaseStore releases) : C
 
     [AllowAnonymous]
     [HttpGet("{version}/files/{fileName}")]
+    [Produces("application/octet-stream")]
+    [ProducesResponseType(200)]
+    [ProducesResponseType(206)]
+    [ProducesResponseType(404)]
     public async Task<IActionResult> Download(string version, string fileName, CancellationToken cancellationToken)
     {
         var path = await releases.GetPublicFileAsync(version, fileName, cancellationToken);
@@ -111,3 +135,8 @@ public sealed class DesktopReleaseUpload
 {
     public IFormFile File { get; set; } = null!;
 }
+
+// Documentation contract for the anonymous compatibility endpoint's JSON response.
+public sealed record LegacyDesktopReleaseInfo(string BackendVersion, string RecommendedDesktopVersion,
+    string MinimumDesktopVersion, string MaximumDesktopVersion, string UpdatesPath,
+    Dictionary<string, string> Installers, string Notes);

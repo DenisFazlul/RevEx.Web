@@ -15,6 +15,7 @@ public sealed class TagGroupsController(
     IUnitOfWork unitOfWork) : ControllerBase
 {
     [HttpGet]
+    [ProducesResponseType<IReadOnlyCollection<TagGroupDto>>(200)]
     public async Task<ActionResult<IReadOnlyCollection<TagGroupDto>>> GetAll(CancellationToken cancellationToken)
     {
         var entities = await repository.GetAllAsync(cancellationToken);
@@ -22,6 +23,8 @@ public sealed class TagGroupsController(
     }
 
     [HttpGet("{id:int}")]
+    [ProducesResponseType<TagGroupDto>(200)]
+    [ProducesResponseType(404)]
     public async Task<ActionResult<TagGroupDto>> GetById(int id, CancellationToken cancellationToken)
     {
         var entity = await repository.GetByIdAsync(id, cancellationToken);
@@ -30,6 +33,9 @@ public sealed class TagGroupsController(
 
     [HttpPost]
     [Authorize(Policy = RevExPolicies.AdministerCatalog)]
+    [ProducesResponseType<TagGroupDto>(201)]
+    [ProducesResponseType(400)]
+    [ProducesResponseType(409)]
     public async Task<ActionResult<TagGroupDto>> Create(CreateTagGroupDto request, CancellationToken cancellationToken)
     {
         var name = request.Name.Trim();
@@ -45,6 +51,10 @@ public sealed class TagGroupsController(
 
     [HttpPut("{id:int}")]
     [Authorize(Policy = RevExPolicies.AdministerCatalog)]
+    [ProducesResponseType(204)]
+    [ProducesResponseType(400)]
+    [ProducesResponseType(404)]
+    [ProducesResponseType(409)]
     public async Task<IActionResult> Update(int id, UpdateTagGroupDto request, CancellationToken cancellationToken)
     {
         var name = request.Name.Trim();
@@ -62,6 +72,9 @@ public sealed class TagGroupsController(
 
     [HttpDelete("{id:int}")]
     [Authorize(Policy = RevExPolicies.AdministerCatalog)]
+    [ProducesResponseType(204)]
+    [ProducesResponseType(404)]
+    [ProducesResponseType(409)]
     public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)
     {
         var entity = await repository.GetByIdAsync(id, cancellationToken);

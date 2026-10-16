@@ -17,6 +17,15 @@ public static class ServiceCollectionExtensions
         services.AddEndpointsApiExplorer();
         services.AddSwaggerGen(options =>
         {
+            options.SwaggerDoc("v1", new OpenApiInfo
+            {
+                Title = "RevEx Web API",
+                Version = "v1",
+                Description = "API каталога RevEx, файлов, истории и управления релизами desktop. " +
+                    "По умолчанию требуется авторизация. Политика EditContent: moderator/administrator; " +
+                    "AdministerCatalog: administrator."
+            });
+            options.OperationFilter<RevEx.Api.OpenApi.AuthorizationOperationFilter>();
             if (!IsKeycloakConfigured(configuration))
                 return;
 
@@ -26,17 +35,7 @@ public static class ServiceCollectionExtensions
                 Scheme = "bearer",
                 BearerFormat = "JWT"
             });
-            options.AddSecurityRequirement(new OpenApiSecurityRequirement
-            {
-                [new OpenApiSecurityScheme
-                {
-                    Reference = new OpenApiReference
-                    {
-                        Type = ReferenceType.SecurityScheme,
-                        Id = "Bearer"
-                    }
-                }] = []
-            });
+
         });
 
         return services;

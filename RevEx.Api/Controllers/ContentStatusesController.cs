@@ -16,6 +16,7 @@ public sealed class ContentStatusesController(
     IUnitOfWork unitOfWork) : ControllerBase
 {
     [HttpGet]
+    [ProducesResponseType<IReadOnlyCollection<ContentStatusDto>>(200)]
     public async Task<ActionResult<IReadOnlyCollection<ContentStatusDto>>> GetAll(CancellationToken cancellationToken)
     {
         var entities = await repository.GetAllAsync(cancellationToken);
@@ -23,6 +24,8 @@ public sealed class ContentStatusesController(
     }
 
     [HttpGet("{id:int}")]
+    [ProducesResponseType<ContentStatusDto>(200)]
+    [ProducesResponseType(404)]
     public async Task<ActionResult<ContentStatusDto>> GetById(int id, CancellationToken cancellationToken)
     {
         var entity = await repository.GetByIdAsync(id, cancellationToken);
@@ -31,6 +34,9 @@ public sealed class ContentStatusesController(
 
     [HttpPost]
     [Authorize(Policy = RevExPolicies.AdministerCatalog)]
+    [ProducesResponseType<ContentStatusDto>(201)]
+    [ProducesResponseType(400)]
+    [ProducesResponseType(409)]
     public async Task<ActionResult<ContentStatusDto>> Create(
         CreateContentStatusDto request,
         CancellationToken cancellationToken)
@@ -55,6 +61,10 @@ public sealed class ContentStatusesController(
 
     [HttpPut("{id:int}")]
     [Authorize(Policy = RevExPolicies.AdministerCatalog)]
+    [ProducesResponseType(204)]
+    [ProducesResponseType(400)]
+    [ProducesResponseType(404)]
+    [ProducesResponseType(409)]
     public async Task<IActionResult> Update(
         int id,
         UpdateContentStatusDto request,
@@ -86,6 +96,9 @@ public sealed class ContentStatusesController(
 
     [HttpDelete("{id:int}")]
     [Authorize(Policy = RevExPolicies.AdministerCatalog)]
+    [ProducesResponseType(204)]
+    [ProducesResponseType(404)]
+    [ProducesResponseType(409)]
     public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)
     {
         var entity = await repository.GetByIdAsync(id, cancellationToken);

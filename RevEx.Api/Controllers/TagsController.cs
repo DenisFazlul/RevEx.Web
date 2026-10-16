@@ -15,6 +15,7 @@ public sealed class TagsController(
     IUnitOfWork unitOfWork) : ControllerBase
 {
     [HttpGet]
+    [ProducesResponseType<IReadOnlyCollection<TagDto>>(200)]
     public async Task<ActionResult<IReadOnlyCollection<TagDto>>> GetAll(CancellationToken cancellationToken)
     {
         var entities = await repository.GetAllAsync(cancellationToken);
@@ -22,6 +23,8 @@ public sealed class TagsController(
     }
 
     [HttpGet("{id:int}")]
+    [ProducesResponseType<TagDto>(200)]
+    [ProducesResponseType(404)]
     public async Task<ActionResult<TagDto>> GetById(int id, CancellationToken cancellationToken)
     {
         var entity = await repository.GetByIdAsync(id, cancellationToken);
@@ -30,6 +33,9 @@ public sealed class TagsController(
 
     [HttpPost]
     [Authorize(Policy = RevExPolicies.AdministerCatalog)]
+    [ProducesResponseType<TagDto>(201)]
+    [ProducesResponseType(400)]
+    [ProducesResponseType(409)]
     public async Task<ActionResult<TagDto>> Create(CreateTagDto request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
@@ -55,6 +61,10 @@ public sealed class TagsController(
 
     [HttpPut("{id:int}")]
     [Authorize(Policy = RevExPolicies.AdministerCatalog)]
+    [ProducesResponseType(204)]
+    [ProducesResponseType(400)]
+    [ProducesResponseType(404)]
+    [ProducesResponseType(409)]
     public async Task<IActionResult> Update(int id, UpdateTagDto request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
@@ -87,6 +97,8 @@ public sealed class TagsController(
 
     [HttpDelete("{id:int}")]
     [Authorize(Policy = RevExPolicies.AdministerCatalog)]
+    [ProducesResponseType(204)]
+    [ProducesResponseType(404)]
     public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)
     {
         var entity = await repository.GetByIdAsync(id, cancellationToken);
