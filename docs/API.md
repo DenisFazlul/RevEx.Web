@@ -2,10 +2,10 @@
 
 - [OpenAPI 3.0, JSON](openapi.json) — импортируется в Swagger Editor, Postman и другие клиенты.
 - [Сущности и связи](ENTITIES.md) — каталог, файлы, история, релизы и аудит обновлений.
-- Работающий Swagger UI: `http://localhost:8080/swagger`.
-- Спецификация работающего API: `http://localhost:8080/swagger/v1/swagger.json`.
+- Работающий Swagger UI: `http://localhost:8082/swagger`.
+- Спецификация работающего API: `http://localhost:8082/swagger/v1/swagger.json`.
 
-Базовый адрес локального API — `http://localhost:8080`. Пути спецификации
+Базовый адрес локального API — `http://localhost:8082`. Пути спецификации
 начинаются с `/api`. JSON передаётся с `Content-Type: application/json`;
 загрузка файлов — `multipart/form-data`, скачивание — двоичные данные.
 Даты — ISO 8601, идентификаторы каталога — integer, идентификаторы установок,
@@ -41,7 +41,7 @@ realm `revex`, audience `revex-api`, роли берутся из claim `roles`.
 Загрузка превью: `POST /api/content/{id}/preview`, поле формы `File`.
 Загрузка файла версии: `POST /api/content-versions/{id}/file`, поля `File` и `Role`.
 Загрузка релиза: `POST /api/desktop-releases`, поле `File` с ZIP-архивом,
-лимит запроса — 1 GiB. Состав архива описан в [руководстве по релизам](../../../DESKTOP_RELEASES.md).
+лимит запроса — 1 GiB. Состав архива описан в [руководстве по релизам](DESKTOP_RELEASES.md).
 
 Основные ошибки: 400 — некорректные данные, 401 — нужна аутентификация,
 403 — недостаточно прав, 404 — объект или файл отсутствует, 409 — конфликт.
@@ -62,7 +62,9 @@ dotnet run --project tools/OpenApiExport
 ```
 
 Генератор использует реальные MVC-контроллеры и ту же конфигурацию Swagger, что
-и API. Он записывает `docs/openapi.json`, не запускает HTTP-сервер, не подключается
+и API. Он записывает корневой `RevEx.Web/docs/openapi.json`, не запускает HTTP-сервер, не подключается
 к MongoDB, PostgreSQL или Keycloak и не создаёт тестовые данные.
 После изменения API пересоберите спецификацию и закоммитьте её вместе с кодом.
-Вложенный backend и WEB содержат эти документы в обеих Git-историях.
+Документация хранится в корневой папке `RevEx.Web/docs` рядом с Docker Compose.
+
+Полный [перечень маршрутов](API-ROUTES.md) доступен отдельно для просмотра без OpenAPI-клиента.

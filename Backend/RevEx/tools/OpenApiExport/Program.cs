@@ -12,7 +12,7 @@ builder.Services.AddApiSwagger(builder.Configuration);
 await using var app = builder.Build();
 var document = app.Services.GetRequiredService<ISwaggerProvider>().GetSwagger("v1");
 var output = args.Length == 1 ? Path.GetFullPath(args[0])
-    : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../docs/openapi.json"));
+    : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../../../docs/openapi.json"));
 Directory.CreateDirectory(Path.GetDirectoryName(output)!);
 using var text = new StringWriter(CultureInfo.InvariantCulture);
 document.SerializeAsV3(new OpenApiJsonWriter(text));

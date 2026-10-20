@@ -1,10 +1,14 @@
 # Релизы и обновления десктопа
 
+Команды с относительными путями ниже выполняются из корня RevEx.Web,
+если явно не указан переход в Backend/RevEx. Описание протокола нового клиента
+не означает, что текущий RevEx.Desktop уже реализует автоматическое обновление.
+
 ## Управление через админку
 
 Войдите во frontend с ролью `administrator` и откройте Admin → «Сборки десктопа».
 Для существующего Keycloak нужны audience `revex-api` и realm-роли в claim `roles`
-для клиента `revex-frontend` (см. `Keycloak/README.md`).
+для клиента `revex-frontend` (см. [Keycloak](../Keycloak/README.md)).
 
 1. Скачайте артефакт Actions `RevEx-Desktop-win-x64-<version>` для Windows или `RevEx-Desktop-macos-<version>` для обеих архитектур macOS. Отдельные `osx-x64` и `osx-arm64` тоже доступны.
 2. Распакуйте внешний ZIP GitHub и выберите внутренний ZIP-комплект релиза.

@@ -1,10 +1,8 @@
 # RevEx Web guide
 
-Scope: everything under `WEB/`. The backend Git root is `WEB/Backend/RevEx/`.
-The frontend, Compose file, realm import, and Keycloak theme belong to the separate
-`WEB/` Git repository; do not include them in nested backend commits. WEB also tracks
-the backend files as a snapshot; commit backend changes in its nested repository
-and then in WEB so both histories contain a consistent implementation.
+Scope: this RevEx.Web repository, including Backend/RevEx, Frontend, Keycloak and Compose.
+This checkout has one Git root; do not assume Backend/RevEx is a nested repository.
+Project documentation lives in root docs/ beside docker-compose.yml.
 
 ## Backend
 
@@ -13,7 +11,7 @@ and then in WEB so both histories contain a consistent implementation.
 | `Backend/RevEx/RevEx.Api/` | Composition root, controllers, Swagger, JWT validation. |
 | `Backend/RevEx/RevEx.Application/` | DTOs and persistence/storage abstractions. |
 | `Backend/RevEx/RevEx.Domain/` | Entities. |
-| `Backend/RevEx/RevEx.Infrastructure/` | EF repositories, unit of work, in-memory DB/files. |
+| `Backend/RevEx/RevEx.Infrastructure/` | MongoDB repositories, PostgreSQL history, file storage and releases. |
 
 Key files:
 
@@ -25,7 +23,7 @@ Key files:
 Preserve dependency direction: `Api -> Application/Infrastructure`,
 `Infrastructure -> Application/Domain`, and `Application -> Domain`. Controllers use
 `IRepository<T>` and `IUnitOfWork`; do not inject `AppDbContext` into controllers.
-Persistence and uploaded files are intentionally in memory.
+Compose persists catalog metadata in MongoDB, history in PostgreSQL and files in named volumes.
 
 All mapped controller endpoints are protected by default. Keep middleware order as
 `UseCors`, `UseAuthentication`, `UseAuthorization`, then `MapControllers`.
@@ -66,7 +64,7 @@ Vite uses port 5173 and proxies `/api` to `127.0.0.1:8080`.
 - Theme guide: `WEB/Keycloak/README.md`.
 - Theme root: `WEB/Keycloak/themes/revex/login/`.
 
-Services and ports: Keycloak 8081, API 8080, frontend 3000. The API container uses
+Services and host ports: Keycloak 8081, API 8082, frontend 3000. The API container listens on 8080. The API container uses
 `http://keycloak:8080/...` to fetch metadata but validates tokens against the public
 issuer `http://localhost:8081/realms/revex`. Do not collapse those two values without
 testing issuer validation from both host and container.

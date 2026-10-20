@@ -1,29 +1,25 @@
 # RevEx Web
 
-RevEx Web combines the ASP.NET Core API, React frontend, Keycloak realm and local
-Docker Compose infrastructure.
+ASP.NET Core API, React-интерфейс, Keycloak и инфраструктура Docker Compose для библиотеки контента RevEx.
 
-## Local setup
+Полная [документация проекта](docs/README.md) находится рядом с `docker-compose.yml`.
 
-1. Copy `.env.example` to `.env`.
-2. Replace every `change-me` value with a unique local value.
-3. Start the stack:
+## Быстрый запуск
 
-   ```bash
-   docker compose up -d --build
-   ```
+Скопируйте `.env.example` в `.env`, задайте все пароли и выполните из корня:
 
-The application is available at:
+```powershell
+docker compose config --quiet
+docker compose up -d --build
+docker compose ps
+```
 
-- Frontend: <http://localhost:3000>
-- API / Swagger: <http://localhost:8080/swagger>
+- Веб: <http://localhost:3000>
+- API / Swagger: <http://localhost:8082/swagger>
 - Keycloak: <http://localhost:8081>
 
-For standalone API development, provide the PostgreSQL connection string through
-the `ContentHistory__ConnectionString` environment variable.
+В контейнерной сети API слушает порт 8080; наружу опубликован 8082.
+При локальной разработке Vite учитывайте отдельную настройку proxy.
 
-## API documentation
-
-See [OpenAPI and API usage](Backend/RevEx/docs/README.md) and
-[entities and relationships](Backend/RevEx/docs/ENTITIES.md).
-The versioned [OpenAPI JSON](Backend/RevEx/docs/openapi.json) can be imported into API clients.
+См. [запуск и диагностику](docs/OPERATIONS.md), [API](docs/API.md),
+[модель данных](docs/ENTITIES.md) и [релизы desktop](docs/DESKTOP_RELEASES.md).

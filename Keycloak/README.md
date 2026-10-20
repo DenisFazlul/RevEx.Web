@@ -75,3 +75,5 @@ This is development configuration. Passwords are supplied through the untracked
 `WEB/.env` file and substituted into the realm import at startup. The stack uses HTTP
 and starts Keycloak in development mode. Use unique values and do not reuse them in
 production.
+
+Общая документация стенда, фактические порты и жизненный цикл паролей: [docs/OPERATIONS.md](../docs/OPERATIONS.md).

@@ -1,4 +1,4 @@
-// Run only against the disposable API container described in WEB/DESKTOP_RELEASES.md.
+// Run only against the disposable API container described in WEB/docs/DESKTOP_RELEASES.md.
 // Credentials stay local: authorization-code + PKCE uses existing development users.
 import { readFile } from 'node:fs/promises';
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
