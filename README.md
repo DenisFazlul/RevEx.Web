@@ -23,3 +23,6 @@ docker compose ps
 
 См. [запуск и диагностику](docs/OPERATIONS.md), [API](docs/API.md),
 [модель данных](docs/ENTITIES.md) и [релизы desktop](docs/DESKTOP_RELEASES.md).
+
+
+Общие сущности и DTO вынесены в отдельный репозиторий: [подключение Domain](docs/DOMAIN.md).

@@ -3,7 +3,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using RevEx.Api.Authorization;
 using RevEx.Application.Abstractions.Storage;
-using RevEx.Application.DTOs.DesktopReleases;
+using RevEx.Domain.Contracts.DesktopReleases;
 
 namespace RevEx.Api.Controllers;
 
@@ -135,8 +135,3 @@ public sealed class DesktopReleaseUpload
 {
     public IFormFile File { get; set; } = null!;
 }
-
-// Documentation contract for the anonymous compatibility endpoint's JSON response.
-public sealed record LegacyDesktopReleaseInfo(string BackendVersion, string RecommendedDesktopVersion,
-    string MinimumDesktopVersion, string MaximumDesktopVersion, string UpdatesPath,
-    Dictionary<string, string> Installers, string Notes);

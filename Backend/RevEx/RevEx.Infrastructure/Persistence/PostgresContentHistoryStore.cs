@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Options;
 using Npgsql;
 using RevEx.Application.Abstractions.Persistence;
-using RevEx.Application.DTOs.ContentHistory;
+using RevEx.Domain.Contracts.ContentHistory;
 
 namespace RevEx.Infrastructure.Persistence;
 

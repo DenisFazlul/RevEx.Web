@@ -12,10 +12,13 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\RevEx.Application\RevEx.Application.csproj" />
-    <ProjectReference Include="..\RevEx.Domain\RevEx.Domain.csproj" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Data/SeedFiles/Door-Single-Glass-Push-Plate.rfa"
                       LogicalName="RevEx.SeedFiles.Door-Single-Glass-Push-Plate.rfa" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../../RevEx.Domain/src/RevEx.Domain/RevEx.Domain.csproj" Condition="'$(UseRevExDomainPackage)' != 'true'" />
+    <PackageReference Include="RevEx.Domain" Version="1.0.0" Condition="'$(UseRevExDomainPackage)' == 'true'" />
   </ItemGroup>
 </Project>

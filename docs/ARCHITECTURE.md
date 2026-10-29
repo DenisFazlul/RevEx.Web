@@ -23,8 +23,8 @@ flowchart LR
 | Проект | Назначение |
 | --- | --- |
 | `RevEx.Api` | Контроллеры, DI, Swagger, JWT, CORS, проверка совместимости desktop. |
-| `RevEx.Application` | DTO и абстракции persistence/storage. |
-| `RevEx.Domain` | Сущности каталога и общие поля аудита. |
+| `RevEx.Application` | Абстракции persistence/storage; общие DTO находятся в Domain. |
+| `RevEx.Domain` | Общие сущности, HTTP-контракты и роли из отдельного соседнего репозитория RevEx.Domain. |
 | `RevEx.Infrastructure` | MongoDB-репозитории, PostgreSQL-история, файловые хранилища, релизы. |
 | `tools/OpenApiExport` | Генерация спецификации из MVC-контроллеров без запуска инфраструктуры. |
 | `tests/DesktopReleaseChecks` | Исполняемые проверки хранилища релизов и дополнительного аудита. |

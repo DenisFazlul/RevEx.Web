@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using RevEx.Application.Abstractions.Persistence;
 using RevEx.Application.Abstractions.Storage;
-using RevEx.Application.DTOs.ContentFile;
+using RevEx.Domain.Contracts.ContentFile;
 using RevEx.Domain.Entities;
 
 namespace RevEx.Api.Controllers;

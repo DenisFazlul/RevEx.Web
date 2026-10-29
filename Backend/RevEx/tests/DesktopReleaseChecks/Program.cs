@@ -2,7 +2,6 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using RevEx.Application.DTOs.DesktopReleases;
 using RevEx.Infrastructure.DesktopReleases;
 
 var root = Path.Combine(Path.GetTempPath(), "revex-release-checks-" + Guid.NewGuid().ToString("N"));

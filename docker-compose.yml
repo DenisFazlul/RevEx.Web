@@ -49,8 +49,8 @@ services:
 
   revex-api:
     build:
-      context: ./Backend/RevEx
-      dockerfile: RevEx.Api/Dockerfile
+      context: ..
+      dockerfile: RevEx.Web/Backend/RevEx/RevEx.Api/Dockerfile
     ports:
       - "8082:8080"
     environment:

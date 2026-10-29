@@ -1,4 +1,4 @@
-using RevEx.Application.DTOs.ContentHistory;
+using RevEx.Domain.Contracts.ContentHistory;
 
 namespace RevEx.Application.Abstractions.Persistence;
 

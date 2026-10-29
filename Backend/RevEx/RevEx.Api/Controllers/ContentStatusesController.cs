@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using RevEx.Api.Authorization;
 using RevEx.Application.Abstractions.Persistence;
-using RevEx.Application.DTOs.ContentStatus;
+using RevEx.Domain.Contracts.ContentStatus;
 using RevEx.Domain.Entities;
 using ContentEntity = RevEx.Domain.Entities.Content;
 

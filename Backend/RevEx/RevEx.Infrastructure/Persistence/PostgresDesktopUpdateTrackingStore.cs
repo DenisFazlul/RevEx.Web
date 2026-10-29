@@ -4,7 +4,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using RevEx.Application.Abstractions.Persistence;
-using RevEx.Application.DTOs.DesktopReleases;
+using RevEx.Domain.Contracts.DesktopReleases;
 
 namespace RevEx.Infrastructure.Persistence;
 

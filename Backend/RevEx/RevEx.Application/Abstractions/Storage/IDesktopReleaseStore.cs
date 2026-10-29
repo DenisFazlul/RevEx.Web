@@ -1,4 +1,4 @@
-using RevEx.Application.DTOs.DesktopReleases;
+using RevEx.Domain.Contracts.DesktopReleases;
 
 namespace RevEx.Application.Abstractions.Storage;
 

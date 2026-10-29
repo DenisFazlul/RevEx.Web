@@ -4,7 +4,7 @@ using RevEx.Api.Authorization;
 using RevEx.Api.Models;
 using RevEx.Application.Abstractions.Persistence;
 using RevEx.Application.Abstractions.Storage;
-using RevEx.Application.DTOs.ContentVersion;
+using RevEx.Domain.Contracts.ContentVersion;
 using RevEx.Domain.Entities;
 using ContentEntity = RevEx.Domain.Entities.Content;
 

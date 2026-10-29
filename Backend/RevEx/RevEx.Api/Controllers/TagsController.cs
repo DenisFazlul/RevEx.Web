@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using RevEx.Api.Authorization;
 using RevEx.Application.Abstractions.Persistence;
-using RevEx.Application.DTOs.Tag;
+using RevEx.Domain.Contracts.Tag;
 using RevEx.Domain.Entities;
 
 namespace RevEx.Api.Controllers;

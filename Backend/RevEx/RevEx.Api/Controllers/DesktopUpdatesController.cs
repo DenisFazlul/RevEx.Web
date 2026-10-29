@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using RevEx.Api.Authorization;
 using RevEx.Application.Abstractions.Persistence;
 using RevEx.Application.Abstractions.Storage;
-using RevEx.Application.DTOs.DesktopReleases;
+using RevEx.Domain.Contracts.DesktopReleases;
 
 namespace RevEx.Api.Controllers;
 

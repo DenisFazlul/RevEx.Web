@@ -1,5 +1,4 @@
 using RevEx.Application.Abstractions.Storage;
-using RevEx.Application.DTOs.DesktopReleases;
 
 namespace RevEx.Api.Middleware;
 

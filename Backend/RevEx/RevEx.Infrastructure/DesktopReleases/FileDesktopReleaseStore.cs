@@ -5,7 +5,7 @@ using System.Text.Json;
 using System.Xml;
 using System.Xml.Linq;
 using RevEx.Application.Abstractions.Storage;
-using RevEx.Application.DTOs.DesktopReleases;
+using RevEx.Domain.Contracts.DesktopReleases;
 
 namespace RevEx.Infrastructure.DesktopReleases;
 

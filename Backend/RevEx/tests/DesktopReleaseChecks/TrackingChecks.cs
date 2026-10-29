@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Options;
-using RevEx.Application.DTOs.DesktopReleases;
+using RevEx.Domain.Contracts.DesktopReleases;
 using RevEx.Infrastructure.Persistence;
 
 internal static class TrackingChecks
