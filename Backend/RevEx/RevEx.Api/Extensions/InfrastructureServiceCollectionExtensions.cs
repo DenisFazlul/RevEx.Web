@@ -15,6 +15,7 @@ public static class InfrastructureServiceCollectionExtensions
     {
         services.AddSingleton(configuration.GetSection("DesktopReleases").Get<DesktopReleaseOptions>() ?? new DesktopReleaseOptions());
         services.AddSingleton<IDesktopReleaseStore, FileDesktopReleaseStore>();
+        services.AddSingleton<IRevitReleaseStore, FileRevitReleaseStore>();
         services.AddScoped(typeof(IRepository<>), typeof(MongoRepository<>));
         services.AddScoped<IUnitOfWork, MongoUnitOfWork>();
 

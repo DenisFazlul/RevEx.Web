@@ -49,6 +49,15 @@ try
     using var extra = Archive("2.4.2", extra: "surprise.exe");
     await Reject(() => store.UploadAsync(extra, ct), "Unexpected files rejected");
     Check((await store.ListAsync(ct)).Count == 1 && !Directory.EnumerateDirectories(root).Any(p => Path.GetFileName(p).StartsWith('.')), "Rejected uploads leave no staged release");
+    var revitStore = new FileRevitReleaseStore(options);
+    var revitBuild = await revitStore.UploadAsync("1.0.0", "2025", "Revit only", "setup.exe", new MemoryStream([1, 2, 3]), CancellationToken.None);
+    if (await revitStore.GetFileAsync(revitBuild.Id, CancellationToken.None) != null) throw new Exception("Draft is public");
+    await revitStore.PublishAsync(revitBuild.Id, true, CancellationToken.None);
+    var restartedRevit = new FileRevitReleaseStore(options);
+    if (await restartedRevit.GetFileAsync(revitBuild.Id, CancellationToken.None) == null) throw new Exception("Published installer missing after restart");
+    await restartedRevit.PublishAsync(revitBuild.Id, false, CancellationToken.None);
+    if (await restartedRevit.GetFileAsync(revitBuild.Id, CancellationToken.None) != null) throw new Exception("Unpublished installer is public");
+    Console.WriteLine("PASS: Revit draft, publication, restart and withdrawal");
     var limited = new FileDesktopReleaseStore(new() { Path = Path.Combine(root, "limited"), MaximumExpandedBytes = 32 });
     using var large = Archive("2.4.2");
     await Reject(() => limited.UploadAsync(large, ct), "Expanded size limit enforced");

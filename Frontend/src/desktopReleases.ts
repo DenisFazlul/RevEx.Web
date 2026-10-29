@@ -68,3 +68,13 @@ export type DesktopDownloadEvent = {
   startedAt: string; finishedAt?: string; status: string; userId?: string; userName?: string
 }
 export type DesktopUpdateHistory = { installations: DesktopInstallation[]; updates: DesktopUpdateEvent[]; downloads: DesktopDownloadEvent[] }
+
+export type RevitRelease = { id: string; version: string; revitVersion: string; notes: string; fileName: string; uploadedAt: string; isPublished: boolean }
+export const revitReleases = {
+  list: () => request<RevitRelease[]>('api/revit-releases', undefined, true),
+  installers: () => request<RevitRelease[]>('api/revit-releases/installers'),
+  upload: (data: FormData) => request<RevitRelease>('api/revit-releases', { method: 'POST', body: data }, true),
+  publish: (id: string, isPublished: boolean) => request<void>(`api/revit-releases/${id}/publish`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isPublished }),
+  }, true),
+}
