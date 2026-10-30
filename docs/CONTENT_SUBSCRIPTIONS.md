@@ -7,8 +7,11 @@ Repeated PUT/DELETE is safe.
 Flow:
 IContentHistoryStore.AddAsync -> PostgreSQL history -> ContentChangePublisher ->
 Kafka content-changes -> KafkaContentNotificationConsumer ->
-ContentSubscriptions.HandleAsync -> INotificationService -> SMTP.
+ContentChangeHandler.HandleAsync -> INotificationService -> SMTP.
 
+ContentSubscriptions implements IContentSubscriptions and only reads or changes
+subscriptions. ContentChangeHandler implements IContentChangeHandler and handles
+delivery to subscribers. They have separate dependency injection registrations.
 NotificationService contains the Kafka consumer, hosted by the API process.
 It subscribes to Kafka:Topic using Kafka:BootstrapServers and the stable
 Kafka:NotificationGroupId (default revex-content-notifications).

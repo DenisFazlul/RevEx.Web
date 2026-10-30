@@ -12,9 +12,8 @@ builder.Services
     .AddInfrastructureServices(builder.Configuration);
 
 builder.Services.AddNotificationService(builder.Configuration);
-builder.Services.AddSingleton<RevEx.Api.Subscriptions.ContentSubscriptions>();
-builder.Services.AddSingleton<RevEx.Api.Subscriptions.IContentSubscriptions>(sp => sp.GetRequiredService<RevEx.Api.Subscriptions.ContentSubscriptions>());
-builder.Services.AddSingleton<IContentChangeHandler>(sp => sp.GetRequiredService<RevEx.Api.Subscriptions.ContentSubscriptions>());
+builder.Services.AddSingleton<RevEx.Api.Subscriptions.IContentSubscriptions, RevEx.Api.Subscriptions.ContentSubscriptions>();
+builder.Services.AddSingleton<IContentChangeHandler, RevEx.Api.Notifications.ContentChangeHandler>();
 builder.Services.AddOptions<ContentChangeConsumerOptions>().Bind(builder.Configuration.GetSection("Kafka"))
     .Validate(o => !string.IsNullOrWhiteSpace(o.BootstrapServers) && !string.IsNullOrWhiteSpace(o.Topic)
         && !string.IsNullOrWhiteSpace(o.NotificationGroupId), "Kafka notification consumer settings are required.")

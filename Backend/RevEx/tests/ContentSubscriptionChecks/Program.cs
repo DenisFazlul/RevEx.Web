@@ -1,3 +1,4 @@
+using RevEx.Api.Notifications;
 using System.Text.Json;
 using Confluent.Kafka;
 using Confluent.Kafka.Admin;
@@ -35,13 +36,15 @@ try
     await history.InitializeAsync();
     var sender = new RecordingNotifications();
     var subscriptions = new ContentSubscriptions(
+        Options.Create(new ContentHistoryOptions { ConnectionString = connection }));
+    var handler = new ContentChangeHandler(
         Options.Create(new ContentHistoryOptions { ConnectionString = connection }), sender);
     var consumerOptions = Options.Create(new ContentChangeConsumerOptions
     {
         BootstrapServers = kafka, Topic = topic, NotificationGroupId = "checks-" + suffix
     });
     using var consumer = new KafkaContentNotificationConsumer(
-        consumerOptions, subscriptions, NullLogger<KafkaContentNotificationConsumer>.Instance);
+        consumerOptions, handler, NullLogger<KafkaContentNotificationConsumer>.Instance);
     await subscriptions.SetAsync(991, "first", "first@example.com", true, default);
     await subscriptions.SetAsync(991, "second", "second@example.com", true, default);
     await subscriptions.SetAsync(992, "other", "other@example.com", true, default);
