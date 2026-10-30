@@ -30,13 +30,3 @@ This is a single-node development broker using plaintext inside the Compose netw
 Messages are camelCase JSON: id, contentId, occurredAt, description, author.
 The key is the content ID. Producer idempotence is enabled for Kafka transport retries.
 Delivery is not atomic with PostgreSQL history writes.
-
-## Automated local integration check
-
-With Compose running, execute:
-
-node Backend/RevEx/tests/ContentChangeChecks/http-checks.mjs
-
-The check authenticates with Keycloak, creates and updates test content, compares Kafka
-messages with history, and verifies persistence across a broker restart. It deletes its
-content afterwards; audit history remains. Run when a Kafka restart is acceptable.
