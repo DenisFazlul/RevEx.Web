@@ -40,33 +40,6 @@ public sealed class ContentSubscriptions(IOptions<ContentHistoryOptions> options
         await command.ExecuteNonQueryAsync(token);
     }
 
-    public override async Task StartAsync(CancellationToken token)
-    {
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(token);
-        await using var command = new NpgsqlCommand("""
-            CREATE TABLE IF NOT EXISTS content_subscriptions(
-                id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-                user_id text NOT NULL, content_id integer NOT NULL, email text NOT NULL,
-                UNIQUE(content_id,user_id));
-            CREATE TABLE IF NOT EXISTS content_notification_queue(
-                event_id bigint NOT NULL REFERENCES content_history_events(id),
-                user_id text NOT NULL, email text NOT NULL, sent boolean NOT NULL DEFAULT false,
-                PRIMARY KEY(event_id,user_id));
-            CREATE OR REPLACE FUNCTION queue_content_notifications() RETURNS trigger AS $$
-            BEGIN
-                INSERT INTO content_notification_queue(event_id,user_id,email)
-                SELECT NEW.id,user_id,email FROM content_subscriptions WHERE content_id=NEW.content_id;
-                RETURN NEW;
-            END;
-            $$ LANGUAGE plpgsql;
-            CREATE OR REPLACE TRIGGER content_history_notifications AFTER INSERT ON content_history_events
-                FOR EACH ROW EXECUTE FUNCTION queue_content_notifications();
-            """, connection);
-        await command.ExecuteNonQueryAsync(token);
-        await base.StartAsync(token);
-    }
-
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)

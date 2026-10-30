@@ -36,6 +36,16 @@ public sealed class PostgresContentHistoryStore : IContentHistoryStore, IAsyncDi
                 ON content_history_events (content_id, occurred_at DESC, id DESC);
             ALTER TABLE content_history_events
                 ALTER COLUMN description TYPE text;
+            CREATE TABLE IF NOT EXISTS content_subscriptions(
+                id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                user_id text NOT NULL, content_id integer NOT NULL, email text NOT NULL,
+                UNIQUE(content_id,user_id));
+            CREATE TABLE IF NOT EXISTS content_notification_queue(
+                event_id bigint NOT NULL REFERENCES content_history_events(id),
+                user_id text NOT NULL, email text NOT NULL, sent boolean NOT NULL DEFAULT false,
+                PRIMARY KEY(event_id,user_id));
+            DROP TRIGGER IF EXISTS content_history_notifications ON content_history_events;
+            DROP FUNCTION IF EXISTS queue_content_notifications();
             """;
 
         await using var command = _dataSource.CreateCommand(sql);
@@ -77,9 +87,17 @@ public sealed class PostgresContentHistoryStore : IContentHistoryStore, IAsyncDi
         CancellationToken cancellationToken = default)
     {
         const string sql = """
-            INSERT INTO content_history_events (content_id, description, author)
-            VALUES ($1, $2, $3)
-            RETURNING id, occurred_at;
+            WITH change AS (
+                INSERT INTO content_history_events (content_id, description, author)
+                VALUES ($1, $2, $3)
+                RETURNING id, occurred_at, content_id
+            ), queued AS (
+                INSERT INTO content_notification_queue(event_id, user_id, email)
+                SELECT change.id, subscription.user_id, subscription.email
+                FROM change JOIN content_subscriptions subscription
+                    ON subscription.content_id = change.content_id
+            )
+            SELECT id, occurred_at FROM change;
             """;
 
         await using var command = _dataSource.CreateCommand(sql);

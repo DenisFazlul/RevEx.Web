@@ -10,6 +10,9 @@ public interface IContentHistoryStore
         int contentId,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Saves a history event and atomically queues notifications for its current subscribers.
+    /// </summary>
     Task<ContentHistoryEventDto> AddAsync(
         int contentId,
         string description,
