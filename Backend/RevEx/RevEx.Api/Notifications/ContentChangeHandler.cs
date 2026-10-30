@@ -14,6 +14,11 @@ public sealed class ContentChangeHandler(
 
     public async Task HandleAsync(ContentHistoryEventDto change, CancellationToken cancellationToken)
     {
+        await SendNotificationsAsync(change, cancellationToken);
+    }
+
+    private async Task SendNotificationsAsync(ContentHistoryEventDto change, CancellationToken cancellationToken)
+    {
         var recipients = new List<(string UserId, string Email)>();
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
