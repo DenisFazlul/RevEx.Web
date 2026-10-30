@@ -98,6 +98,7 @@ services:
     environment:
       Kafka__BootstrapServers: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
       Kafka__Topic: ${KAFKA_TOPIC:-content-changes}
+      Kafka__NotificationGroupId: ${KAFKA_NOTIFICATION_GROUP_ID:-revex-content-notifications}
       NotificationService__Host: "${SMTP_HOST:-localhost}"
       NotificationService__Port: "${SMTP_PORT:-587}"
       NotificationService__EnableSsl: "${SMTP_ENABLE_SSL:-true}"

@@ -36,6 +36,16 @@ public sealed class PostgresContentHistoryStore : IContentHistoryStore, IAsyncDi
                 ON content_history_events (content_id, occurred_at DESC, id DESC);
             ALTER TABLE content_history_events
                 ALTER COLUMN description TYPE text;
+            CREATE TABLE IF NOT EXISTS content_subscriptions(
+                id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                user_id text NOT NULL, content_id integer NOT NULL, email text NOT NULL,
+                UNIQUE(content_id,user_id));
+            ALTER TABLE content_subscriptions
+                ADD COLUMN IF NOT EXISTS subscribed_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP;
+            CREATE TABLE IF NOT EXISTS content_notification_deliveries(
+                event_id bigint NOT NULL, user_id text NOT NULL,
+                delivered_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY(event_id,user_id));
             """;
 
         await using var command = _dataSource.CreateCommand(sql);

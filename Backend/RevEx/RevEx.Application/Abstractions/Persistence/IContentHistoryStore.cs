@@ -10,6 +10,9 @@ public interface IContentHistoryStore
         int contentId,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Saves a history event and publishes the change to Kafka.
+    /// </summary>
     Task<ContentHistoryEventDto> AddAsync(
         int contentId,
         string description,

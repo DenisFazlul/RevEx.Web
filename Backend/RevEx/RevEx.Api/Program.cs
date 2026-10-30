@@ -1,4 +1,4 @@
-using NotificationService;
+using RevEx.Infrastructure.Notifications;
 using RevEx.Api.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
