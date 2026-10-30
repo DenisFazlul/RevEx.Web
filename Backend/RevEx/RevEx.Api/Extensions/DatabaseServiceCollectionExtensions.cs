@@ -16,6 +16,10 @@ public static class DatabaseServiceCollectionExtensions
         services.AddSingleton<IContentHistoryStore, PostgresContentHistoryStore>();
         services.AddSingleton<IDesktopUpdateTrackingStore, PostgresDesktopUpdateTrackingStore>();
 
+        services.AddOptions<KafkaOptions>().Bind(configuration.GetSection("Kafka"))
+            .Validate(o => !string.IsNullOrWhiteSpace(o.BootstrapServers) && !string.IsNullOrWhiteSpace(o.Topic), "Kafka settings are required.")
+            .ValidateOnStart();
+        services.AddSingleton<ContentChangePublisher>();
         return services;
     }
 }

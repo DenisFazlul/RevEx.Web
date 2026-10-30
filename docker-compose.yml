@@ -1,4 +1,46 @@
 services:
+  kafka:
+    image: apache/kafka:3.9.1
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_LOG_RETENTION_MS: ${KAFKA_RETENTION_MS:-864000000}
+      KAFKA_LOG_SEGMENT_MS: 3600000
+      KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS: 300000
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+    restart: unless-stopped
+
+  kafka-init:
+    image: apache/kafka:3.9.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      KAFKA_TOPIC: ${KAFKA_TOPIC:-content-changes}
+      KAFKA_RETENTION_MS: ${KAFKA_RETENTION_MS:-864000000}
+    entrypoint: ["/bin/bash", "-ec"]
+    command:
+      - |
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server "$$KAFKA_BOOTSTRAP_SERVERS" --create --if-not-exists --topic "$$KAFKA_TOPIC" --partitions 1 --replication-factor 1
+        /opt/kafka/bin/kafka-configs.sh --bootstrap-server "$$KAFKA_BOOTSTRAP_SERVERS" --entity-type topics --entity-name "$$KAFKA_TOPIC" --alter --add-config "retention.ms=$$KAFKA_RETENTION_MS,cleanup.policy=delete,segment.ms=3600000,retention.bytes=-1"
+
   mongodb:
     image: mongo:8.0
     ports:
@@ -54,6 +96,8 @@ services:
     ports:
       - "8082:8080"
     environment:
+      Kafka__BootstrapServers: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      Kafka__Topic: ${KAFKA_TOPIC:-content-changes}
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
       Authentication__Provider: Keycloak
@@ -71,6 +115,8 @@ services:
       - revex-files:/app/storage/files
       - desktop-releases:/app/storage/desktop-releases
     depends_on:
+      kafka-init:
+        condition: service_completed_successfully
       keycloak:
         condition: service_started
       mongodb:
@@ -89,6 +135,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  kafka-data:
   mongodb-data:
   content-history-data:
   revex-files:
