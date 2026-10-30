@@ -1,3 +1,4 @@
+using NotificationService;
 using RevEx.Api.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -10,6 +11,7 @@ builder.Services
     .AddDatabase(builder.Configuration)
     .AddInfrastructureServices(builder.Configuration);
 
+builder.Services.AddNotificationService(builder.Configuration);
 var app = builder.Build();
 
 await app.InitializeContentHistoryAsync();

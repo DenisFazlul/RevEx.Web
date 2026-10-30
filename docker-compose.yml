@@ -98,6 +98,13 @@ services:
     environment:
       Kafka__BootstrapServers: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
       Kafka__Topic: ${KAFKA_TOPIC:-content-changes}
+      NotificationService__Host: "${SMTP_HOST:-localhost}"
+      NotificationService__Port: "${SMTP_PORT:-587}"
+      NotificationService__EnableSsl: "${SMTP_ENABLE_SSL:-true}"
+      NotificationService__Username: "${SMTP_USERNAME:-}"
+      NotificationService__Password: "${SMTP_PASSWORD:-}"
+      NotificationService__FromAddress: "${SMTP_FROM_ADDRESS:-noreply@example.com}"
+      NotificationService__FromName: "${SMTP_FROM_NAME:-RevEx}"
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
       Authentication__Provider: Keycloak
