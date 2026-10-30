@@ -12,6 +12,9 @@ builder.Services
     .AddInfrastructureServices(builder.Configuration);
 
 builder.Services.AddNotificationService(builder.Configuration);
+builder.Services.AddSingleton<RevEx.Api.Subscriptions.ContentSubscriptions>();
+builder.Services.AddSingleton<RevEx.Api.Subscriptions.IContentSubscriptions>(sp => sp.GetRequiredService<RevEx.Api.Subscriptions.ContentSubscriptions>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<RevEx.Api.Subscriptions.ContentSubscriptions>());
 var app = builder.Build();
 
 await app.InitializeContentHistoryAsync();
