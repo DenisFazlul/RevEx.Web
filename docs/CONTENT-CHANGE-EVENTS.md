@@ -1,9 +1,11 @@
 # Content change events
 
-Every new content history entry is also queued in PostgreSQL in the same SQL statement.
-The API background worker publishes pending entries to Kafka and removes each queued
-entry only after Kafka acknowledges it. Broker outages do not discard pending events.
-Existing history is not backfilled. Database history retention is unchanged.
+After saving a content history entry in PostgreSQL, the API publishes its DTO directly
+to Kafka and waits for acknowledgement (delivery timeout: ten seconds).
+Kafka errors are logged; the saved history and successful API operation are preserved.
+There is no persistent queue, background dispatcher, backfill or later retry.
+A broker outage or process crash can therefore lose notifications.
+Existing legacy queue tables are no longer used and are left untouched.
 
 ## Configuration and startup
 
@@ -25,39 +27,16 @@ This is a single-node development broker using plaintext inside the Compose netw
 
 ## Message contract
 
-Messages use the existing content history DTO serialized as camelCase JSON:
-`id`, `contentId`, `occurredAt`, `description`, `author`. The key is the content ID.
-Delivery is at least once: a crash between Kafka acknowledgement and PostgreSQL
-commit can cause a duplicate. Consumers must deduplicate by history event `id`.
-Producer idempotence handles producer retries, but does not eliminate that crash window.
-Pending rows remain until sent; monitor API delivery warnings during long outages.
+Messages are camelCase JSON: id, contentId, occurredAt, description, author.
+The key is the content ID. Producer idempotence is enabled for Kafka transport retries.
+Delivery is not atomic with PostgreSQL history writes.
 
-## Manual delivery and recovery check
-
-1. Start Compose and open a consumer:
-   `docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka:9092 --topic content-changes --from-beginning`
-2. Make an authenticated content edit. Compare the JSON event with its history entry.
-3. Stop Kafka (`docker compose stop kafka`), make another edit and confirm history
-   still succeeds. Restart Kafka (`docker compose start kafka`) and confirm delivery.
-4. Restart the API while Kafka is unavailable and verify the pending event is delivered
-   after recovery. Pending entries can be inspected in `content_change_outbox`.
-5. Inspect the effective topic settings:
-   `docker compose exec kafka /opt/kafka/bin/kafka-configs.sh --bootstrap-server kafka:9092 --entity-type topics --entity-name content-changes --describe`
-   Confirm `retention.ms=864000000` and `cleanup.policy=delete`.
 ## Automated local integration check
 
-With the Compose stack running, execute:
+With Compose running, execute:
 
-```powershell
 node Backend/RevEx/tests/ContentChangeChecks/http-checks.mjs
-```
 
-The check logs in through Keycloak using authorization code + PKCE and the admin
-credentials from the root `.env`; it does not enable password grants or bypass auth.
-It creates its own content, checks creation/update event payloads against database
-history, stops Kafka, verifies durable queueing across an API restart, restores Kafka,
-and checks delivery and event persistence across a broker restart. It then deletes
-the test content; audit entries remain intentionally. Run when brief interruptions
-of the local Kafka and API are acceptable. It also checks effective topic retention
-and that anonymous API requests remain unauthorized. It verifies the configured
-ten-day policy, without waiting ten days for segment deletion.
+The check authenticates with Keycloak, creates and updates test content, compares Kafka
+messages with history, and verifies persistence across a broker restart. It deletes its
+content afterwards; audit history remains. Run when a Kafka restart is acceptable.

@@ -8,9 +8,11 @@ namespace RevEx.Infrastructure.Persistence;
 public sealed class PostgresContentHistoryStore : IContentHistoryStore, IAsyncDisposable
 {
     private readonly NpgsqlDataSource _dataSource;
+    private readonly ContentChangePublisher _publisher;
 
-    public PostgresContentHistoryStore(IOptions<ContentHistoryOptions> options)
+    public PostgresContentHistoryStore(IOptions<ContentHistoryOptions> options, ContentChangePublisher publisher)
     {
+        _publisher = publisher;
         var connectionString = options.Value.ConnectionString;
         if (string.IsNullOrWhiteSpace(connectionString))
         {
@@ -32,7 +34,6 @@ public sealed class PostgresContentHistoryStore : IContentHistoryStore, IAsyncDi
             );
             CREATE INDEX IF NOT EXISTS ix_content_history_events_content_time
                 ON content_history_events (content_id, occurred_at DESC, id DESC);
-            CREATE TABLE IF NOT EXISTS content_change_outbox (event_id bigint PRIMARY KEY REFERENCES content_history_events(id));
             ALTER TABLE content_history_events
                 ALTER COLUMN description TYPE text;
             """;
@@ -76,12 +77,9 @@ public sealed class PostgresContentHistoryStore : IContentHistoryStore, IAsyncDi
         CancellationToken cancellationToken = default)
     {
         const string sql = """
-            WITH inserted AS (
-                INSERT INTO content_history_events (content_id, description, author)
-                VALUES ($1, $2, $3) RETURNING id, occurred_at
-            ), queued AS (
-                INSERT INTO content_change_outbox (event_id) SELECT id FROM inserted
-            ) SELECT id, occurred_at FROM inserted;
+            INSERT INTO content_history_events (content_id, description, author)
+            VALUES ($1, $2, $3)
+            RETURNING id, occurred_at;
             """;
 
         await using var command = _dataSource.CreateCommand(sql);
@@ -91,12 +89,15 @@ public sealed class PostgresContentHistoryStore : IContentHistoryStore, IAsyncDi
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         await reader.ReadAsync(cancellationToken);
 
-        return new ContentHistoryEventDto(
+        var change = new ContentHistoryEventDto(
             reader.GetInt64(0),
             contentId,
             reader.GetFieldValue<DateTimeOffset>(1),
             description,
             author);
+        await reader.DisposeAsync();
+        await _publisher.PublishAsync(change, cancellationToken);
+        return change;
     }
 
     public ValueTask DisposeAsync() => _dataSource.DisposeAsync();

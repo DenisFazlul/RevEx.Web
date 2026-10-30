@@ -19,7 +19,7 @@ public static class DatabaseServiceCollectionExtensions
         services.AddOptions<KafkaOptions>().Bind(configuration.GetSection("Kafka"))
             .Validate(o => !string.IsNullOrWhiteSpace(o.BootstrapServers) && !string.IsNullOrWhiteSpace(o.Topic), "Kafka settings are required.")
             .ValidateOnStart();
-        services.AddHostedService<RevEx.Api.ContentChangePublisher>();
+        services.AddSingleton<ContentChangePublisher>();
         return services;
     }
 }
