@@ -42,17 +42,6 @@ try
         if (!condition) throw new Exception(message);
         Console.WriteLine("PASS: " + message);
     }
-    // Simulate the trigger installed by the previous version, then initialize again.
-    await Run("""
-        CREATE FUNCTION queue_content_notifications() RETURNS trigger AS $$
-        BEGIN RETURN NEW; END; $$ LANGUAGE plpgsql;
-        CREATE TRIGGER content_history_notifications AFTER INSERT ON content_history_events
-        FOR EACH ROW EXECUTE FUNCTION queue_content_notifications();
-        """);
-    await store.InitializeAsync();
-    Check(await Count("SELECT count(*) FROM pg_trigger WHERE tgname='content_history_notifications' AND tgrelid='content_history_events'::regclass") == 0,
-        "Initialization removes the old trigger.");
-
     await Run("""
         INSERT INTO content_subscriptions(content_id,user_id,email)
         VALUES(991,'first','first@example.com'),(991,'second','second@example.com'),(992,'other','other@example.com');

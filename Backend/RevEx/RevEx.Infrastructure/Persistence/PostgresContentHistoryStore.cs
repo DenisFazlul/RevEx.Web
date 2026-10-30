@@ -44,8 +44,6 @@ public sealed class PostgresContentHistoryStore : IContentHistoryStore, IAsyncDi
                 event_id bigint NOT NULL REFERENCES content_history_events(id),
                 user_id text NOT NULL, email text NOT NULL, sent boolean NOT NULL DEFAULT false,
                 PRIMARY KEY(event_id,user_id));
-            DROP TRIGGER IF EXISTS content_history_notifications ON content_history_events;
-            DROP FUNCTION IF EXISTS queue_content_notifications();
             """;
 
         await using var command = _dataSource.CreateCommand(sql);
