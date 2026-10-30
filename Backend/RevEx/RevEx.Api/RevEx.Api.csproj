@@ -11,7 +11,6 @@
   <ItemGroup>
     <ProjectReference Include="..\RevEx.Application\RevEx.Application.csproj" />
     <ProjectReference Include="..\RevEx.Infrastructure\RevEx.Infrastructure.csproj" />
-    <ProjectReference Include="..\NotificationService\NotificationService.csproj" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../../../RevEx.Domain/src/RevEx.Domain/RevEx.Domain.csproj" Condition="'$(UseRevExDomainPackage)' != 'true'" />

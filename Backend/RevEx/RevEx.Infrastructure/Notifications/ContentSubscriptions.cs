@@ -2,7 +2,7 @@ using Microsoft.Extensions.Options;
 using Npgsql;
 using RevEx.Infrastructure.Persistence;
 
-namespace RevEx.Api.Subscriptions;
+namespace RevEx.Infrastructure.Notifications;
 
 public interface IContentSubscriptions
 {

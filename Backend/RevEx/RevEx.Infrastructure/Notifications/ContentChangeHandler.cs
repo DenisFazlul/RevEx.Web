@@ -1,10 +1,9 @@
 using Microsoft.Extensions.Options;
 using Npgsql;
-using NotificationService;
 using RevEx.Domain.Contracts.ContentHistory;
 using RevEx.Infrastructure.Persistence;
 
-namespace RevEx.Api.Notifications;
+namespace RevEx.Infrastructure.Notifications;
 
 public sealed class ContentChangeHandler(
     IOptions<ContentHistoryOptions> options,

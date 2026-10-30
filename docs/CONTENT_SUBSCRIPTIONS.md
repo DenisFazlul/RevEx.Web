@@ -12,7 +12,11 @@ ContentChangeHandler.HandleAsync -> INotificationService -> SMTP.
 ContentSubscriptions implements IContentSubscriptions and only reads or changes
 subscriptions. ContentChangeHandler implements IContentChangeHandler and handles
 delivery to subscribers. They have separate dependency injection registrations.
-NotificationService contains the Kafka consumer, hosted by the API process.
+All notification and subscription implementations, interfaces and options live in
+RevEx.Infrastructure/Notifications (namespace RevEx.Infrastructure.Notifications).
+AddNotificationService registers SMTP, subscriptions, the handler and Kafka consumer.
+The API hosts the consumer and calls this registration method; there is no separate
+NotificationService project. The NotificationService configuration section is preserved.
 It subscribes to Kafka:Topic using Kafka:BootstrapServers and the stable
 Kafka:NotificationGroupId (default revex-content-notifications).
 It consumes the existing publisher's ContentHistoryEventDto JSON. No history

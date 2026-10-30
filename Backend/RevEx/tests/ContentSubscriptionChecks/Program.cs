@@ -1,12 +1,10 @@
-using RevEx.Api.Notifications;
+using RevEx.Infrastructure.Notifications;
 using System.Text.Json;
 using Confluent.Kafka;
 using Confluent.Kafka.Admin;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using NotificationService;
 using Npgsql;
-using RevEx.Api.Subscriptions;
 using RevEx.Application.Abstractions.Persistence;
 using RevEx.Domain.Contracts.ContentHistory;
 using RevEx.Infrastructure.Persistence;

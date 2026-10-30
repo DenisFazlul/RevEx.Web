@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using RevEx.Domain.Contracts.ContentHistory;
 
-namespace NotificationService;
+namespace RevEx.Infrastructure.Notifications;
 
 public sealed class ContentChangeConsumerOptions
 {

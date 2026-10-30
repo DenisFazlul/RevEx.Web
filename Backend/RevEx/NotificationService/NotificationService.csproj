@@ -1,9 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
-  <ItemGroup>
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <PackageReference Include="Confluent.Kafka" Version="2.6.1" />
-    <ProjectReference Include="../../../../RevEx.Domain/src/RevEx.Domain/RevEx.Domain.csproj" Condition="'$(UseRevExDomainPackage)' != 'true'" />
-    <PackageReference Include="RevEx.Domain" Version="1.0.5" Condition="'$(UseRevExDomainPackage)' == 'true'" />
-  </ItemGroup>
-</Project>

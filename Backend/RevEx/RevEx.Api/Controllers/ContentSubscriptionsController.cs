@@ -1,7 +1,7 @@
 using System.Net.Mail;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
-using RevEx.Api.Subscriptions;
+using RevEx.Infrastructure.Notifications;
 using RevEx.Application.Abstractions.Persistence;
 using ContentEntity = RevEx.Domain.Entities.Content;
 
