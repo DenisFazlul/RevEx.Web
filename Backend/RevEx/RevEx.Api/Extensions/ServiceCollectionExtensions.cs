@@ -6,7 +6,10 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddApiControllers(this IServiceCollection services)
     {
-        services.AddControllers();
+        services.AddControllers(options => options.Filters.Add<RevEx.Api.Filters.ContentOperationExceptionFilter>());
+        services.AddHttpContextAccessor();
+        services.AddScoped<RevEx.Application.Abstractions.Identity.ICurrentUser, RevEx.Api.Authorization.HttpCurrentUser>();
+        services.AddScoped<RevEx.Application.Content.ContentService>();
         return services;
     }
 

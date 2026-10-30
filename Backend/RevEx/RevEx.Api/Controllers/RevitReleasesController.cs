@@ -49,11 +49,3 @@ public sealed class RevitReleasesController(IRevitReleaseStore releases) : Contr
         return file == null ? NotFound() : PhysicalFile(file.Value.Path, "application/octet-stream", file.Value.Name, enableRangeProcessing: true);
     }
 }
-public sealed class RevitUpload
-{
-    public string Version { get; set; } = "";
-    public string RevitVersion { get; set; } = "";
-    public string Notes { get; set; } = "";
-    public IFormFile? File { get; set; }
-}
-public sealed record RevitPublication(bool IsPublished);

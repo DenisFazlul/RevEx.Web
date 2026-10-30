@@ -1,14 +1,9 @@
+using RevEx.Application.Subscriptions;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using RevEx.Infrastructure.Persistence;
 
 namespace RevEx.Infrastructure.Notifications;
-
-public interface IContentSubscriptions
-{
-    Task<bool> GetAsync(int contentId, string userId, CancellationToken token);
-    Task SetAsync(int contentId, string userId, string? email, bool enabled, CancellationToken token);
-}
 
 public sealed class ContentSubscriptions(IOptions<ContentHistoryOptions> options) : IContentSubscriptions
 {

@@ -10,7 +10,8 @@ namespace RevEx.Api.Controllers;
 
 [ApiController]
 [Route("api/content/{contentId:int}/history")]
-public sealed class ContentHistoryController(
+public sealed class ContentHistoryController(RevEx.Application.Abstractions.Identity.ICurrentUser currentUser,
+
     IRepository<ContentEntity> contentRepository,
     IContentHistoryStore historyStore) : ControllerBase
 {
@@ -53,15 +54,9 @@ public sealed class ContentHistoryController(
         var created = await historyStore.AddAsync(
             contentId,
             description,
-            ResolveAuthor(User),
+            currentUser.Author,
             cancellationToken);
         return CreatedAtAction(nameof(Get), new { contentId }, created);
     }
 
-    internal static string ResolveAuthor(ClaimsPrincipal user) =>
-        user.FindFirstValue("preferred_username")
-        ?? user.FindFirstValue(ClaimTypes.Name)
-        ?? user.FindFirstValue("email")
-        ?? user.FindFirstValue("sub")
-        ?? "unknown";
 }

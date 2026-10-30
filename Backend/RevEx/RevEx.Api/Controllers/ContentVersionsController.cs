@@ -12,7 +12,8 @@ namespace RevEx.Api.Controllers;
 
 [ApiController]
 [Route("api/content-versions")]
-public sealed class ContentVersionsController(
+public sealed class ContentVersionsController(RevEx.Application.Abstractions.Identity.ICurrentUser currentUser,
+
     IRepository<ContentEntity> contentRepository,
     IRepository<ContentVersion> versionRepository,
     IRepository<ContentFile> fileRepository,
@@ -83,7 +84,7 @@ public sealed class ContentVersionsController(
             $"Версия создана. Название: {Quote(entity.Name)}; дата: {Quote(FormatDate(entity.Date))}; " +
             $"статус: {Quote(entity.Status)}; приложение: {Quote(entity.Application)}; " +
             $"версия приложения: {Quote(entity.ApplicationVersion)}.",
-            ContentHistoryController.ResolveAuthor(User),
+            currentUser.Author,
             cancellationToken);
 
         var result = Map(entity);
@@ -166,7 +167,7 @@ public sealed class ContentVersionsController(
             version.ContentId,
             $"Файл версии {Quote(version.Name)} изменён: {Quote("не задано")} → {Quote(originalFileName)}; " +
             $"роль: {Quote(role)}; размер: {request.File.Length} байт.",
-            ContentHistoryController.ResolveAuthor(User),
+            currentUser.Author,
             cancellationToken);
 
         return CreatedAtAction(nameof(GetById), new { id = version.Id }, Map(version));
@@ -202,7 +203,7 @@ public sealed class ContentVersionsController(
             version.ContentId,
             $"Файл версии {Quote(version.Name)} изменён: {Quote(file.OriginalFileName)} → {Quote("удалён")}; " +
             $"роль: {Quote(file.Role)}; размер: {file.SizeBytes} байт.",
-            ContentHistoryController.ResolveAuthor(User),
+            currentUser.Author,
             cancellationToken);
         return NoContent();
     }
@@ -251,7 +252,7 @@ public sealed class ContentVersionsController(
             await historyStore.AddAsync(
                 version.ContentId,
                 historyDescription,
-                ContentHistoryController.ResolveAuthor(User),
+                currentUser.Author,
                 cancellationToken);
         }
         return NoContent();
@@ -282,7 +283,7 @@ public sealed class ContentVersionsController(
             $"Версия удалена. Название: {Quote(version.Name)}; дата: {Quote(FormatDate(version.Date))}; " +
             $"статус: {Quote(version.Status)}; приложение: {Quote(version.Application)}; " +
             $"версия приложения: {Quote(version.ApplicationVersion)}; файлов: {version.Files.Count}.",
-            ContentHistoryController.ResolveAuthor(User),
+            currentUser.Author,
             cancellationToken);
         return NoContent();
     }

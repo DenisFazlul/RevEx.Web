@@ -7,18 +7,6 @@ using RevEx.Domain.Contracts.ContentHistory;
 
 namespace RevEx.Infrastructure.Notifications;
 
-public sealed class ContentChangeConsumerOptions
-{
-    public string BootstrapServers { get; set; } = "localhost:9092";
-    public string Topic { get; set; } = "content-changes";
-    public string NotificationGroupId { get; set; } = "revex-content-notifications";
-}
-
-public interface IContentChangeHandler
-{
-    Task HandleAsync(ContentHistoryEventDto change, CancellationToken cancellationToken);
-}
-
 /// <summary>Consumes the history publisher's JSON messages and acknowledges only delivered events.</summary>
 public sealed class KafkaContentNotificationConsumer(
     IOptions<ContentChangeConsumerOptions> options,

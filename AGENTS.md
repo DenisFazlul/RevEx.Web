@@ -9,8 +9,8 @@ Project documentation lives in root docs/ beside docker-compose.yml.
 | Path | Responsibility |
 | --- | --- |
 | `Backend/RevEx/RevEx.Api/` | Composition root, controllers, Swagger, JWT validation. |
-| `Backend/RevEx/RevEx.Application/` | DTOs and persistence/storage abstractions. |
-| `Backend/RevEx/RevEx.Domain/` | Entities. |
+| `Backend/RevEx/RevEx.Application/` | Content use cases and persistence/storage/identity abstractions. |
+| `../RevEx.Domain/src/RevEx.Domain/` | Entities. |
 | `Backend/RevEx/RevEx.Infrastructure/` | MongoDB repositories, PostgreSQL history, file storage and releases. |
 
 Key files:
@@ -21,8 +21,9 @@ Key files:
 - `RevEx.Api/appsettings.json` — standalone issuer/audience settings.
 
 Preserve dependency direction: `Api -> Application/Infrastructure`,
-`Infrastructure -> Application/Domain`, and `Application -> Domain`. Controllers use
+`Infrastructure -> Application/Domain`, and `Application -> Domain`. ContentController delegates to ContentService in Application. Other controllers still use
 `IRepository<T>` and `IUnitOfWork`; do not inject `AppDbContext` into controllers.
+Shared transport DTOs live in ../RevEx.Domain/src/RevEx.Contracts; Domain has no reference to Contracts.
 Compose persists catalog metadata in MongoDB, history in PostgreSQL and files in named volumes.
 
 All mapped controller endpoints are protected by default. Keep middleware order as
@@ -97,3 +98,7 @@ Do not use that assumption for a future persistent or production Keycloak databa
 - Keycloak/theme change: validate Compose/JSON, restart Keycloak, request a real OIDC
   authorization URL with `prompt=login`, and check Keycloak logs for template errors.
 - Never edit `node_modules`, `dist`, `bin`, `obj`, or `tsconfig.tsbuildinfo`.
+
+## C# file layout
+
+Keep one declared type per file, including records, enums, interfaces and test helpers. Name each file after its type. Keep top-level startup statements in Startup.cs and the public Program declaration in Program.cs.

@@ -10,7 +10,8 @@ namespace RevEx.Api.Controllers;
 [ApiController]
 [Route("api/desktop-releases")]
 [Authorize(Policy = RevExPolicies.AdministerCatalog)]
-public sealed class DesktopReleasesController(IDesktopReleaseStore releases) : ControllerBase
+public sealed class DesktopReleasesController(RevEx.Application.Abstractions.Identity.ICurrentUser currentUser,
+    IDesktopReleaseStore releases) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType<IReadOnlyList<DesktopReleaseRecord>>(200)]
@@ -124,14 +125,9 @@ public sealed class DesktopReleasesController(IDesktopReleaseStore releases) : C
             var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
             return new TrackedDesktopFileResult(File(stream, "application/octet-stream", fileName, enableRangeProcessing: true),
                 null, version, fileName, User.FindFirstValue("sub") ?? User.FindFirstValue(ClaimTypes.NameIdentifier),
-                User.Identity?.IsAuthenticated == true ? ContentHistoryController.ResolveAuthor(User) : null);
+                User.Identity?.IsAuthenticated == true ? currentUser.Author : null);
         }
         catch (FileNotFoundException) { return NotFound(); }
         catch (DirectoryNotFoundException) { return NotFound(); }
     }
-}
-
-public sealed class DesktopReleaseUpload
-{
-    public IFormFile File { get; set; } = null!;
 }

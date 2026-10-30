@@ -18,6 +18,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IRevitReleaseStore, FileRevitReleaseStore>();
         services.AddScoped(typeof(IRepository<>), typeof(MongoRepository<>));
         services.AddScoped<IUnitOfWork, MongoUnitOfWork>();
+        services.AddScoped<IContentQueries, MongoContentQueries>();
 
         var options = configuration
             .GetRequiredSection(FileStorageOptions.SectionName)

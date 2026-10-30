@@ -10,7 +10,8 @@ namespace RevEx.Api.Controllers;
 
 [ApiController]
 [Route("api/desktop-updates")]
-public sealed class DesktopUpdatesController(IDesktopReleaseStore releases, IDesktopUpdateTrackingStore tracking) : ControllerBase
+public sealed class DesktopUpdatesController(RevEx.Application.Abstractions.Identity.ICurrentUser currentUser,
+    IDesktopReleaseStore releases, IDesktopUpdateTrackingStore tracking) : ControllerBase
 {
     [AllowAnonymous]
     [HttpPost("check")]
@@ -45,7 +46,7 @@ public sealed class DesktopUpdatesController(IDesktopReleaseStore releases, IDes
         if (userId == null) return Unauthorized();
         try
         {
-            await tracking.ObserveAsync(request, userId, ContentHistoryController.ResolveAuthor(User), cancellationToken);
+            await tracking.ObserveAsync(request, userId, currentUser.Author, cancellationToken);
             return NoContent();
         }
         catch (ArgumentException exception) { return BadRequest(new { message = exception.Message }); }
@@ -90,43 +91,5 @@ public sealed class DesktopUpdatesController(IDesktopReleaseStore releases, IDes
         }
         catch (FileNotFoundException) { return NotFound(); }
         catch (DirectoryNotFoundException) { return NotFound(); }
-    }
-}
-
-internal sealed class TrackedDesktopFileResult(IActionResult file, DesktopUpdateOffer? offer, string version, string fileName,
-    string? userId = null, string? userName = null) : IActionResult
-{
-    public async Task ExecuteResultAsync(ActionContext context)
-    {
-        var services = context.HttpContext.RequestServices;
-        var tracking = services.GetRequiredService<IDesktopUpdateTrackingStore>();
-        Guid id;
-        try { id = await tracking.StartDownloadAsync(offer, version, fileName, userId, userName, context.HttpContext.RequestAborted); }
-        catch
-        {
-            if (file is FileStreamResult streamResult) await streamResult.FileStream.DisposeAsync();
-            throw;
-        }
-        var status = "failed";
-        try
-        {
-            await file.ExecuteResultAsync(context);
-            status = context.HttpContext.RequestAborted.IsCancellationRequested ? "cancelled" :
-                context.HttpContext.Response.StatusCode == 200 ? "transferred" :
-                context.HttpContext.Response.StatusCode == 206 ? "partial" : "rejected";
-        }
-        catch (OperationCanceledException) { status = "cancelled"; throw; }
-        finally
-        {
-            try
-            {
-                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                await tracking.FinishDownloadAsync(id, status, timeout.Token);
-            }
-            catch (Exception exception)
-            {
-                services.GetRequiredService<ILogger<TrackedDesktopFileResult>>().LogError(exception, "Could not finish desktop download event {Id}", id);
-            }
-        }
     }
 }

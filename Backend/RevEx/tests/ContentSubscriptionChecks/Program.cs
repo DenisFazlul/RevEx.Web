@@ -1,3 +1,4 @@
+using RevEx.Infrastructure.Messaging;
 using RevEx.Infrastructure.Notifications;
 using System.Text.Json;
 using Confluent.Kafka;
@@ -24,10 +25,15 @@ try
 {
     await adminKafka.CreateTopicsAsync([new TopicSpecification { Name = topic, NumPartitions = 1, ReplicationFactor = 1 }]);
     var connection = new NpgsqlConnectionStringBuilder(settings) { SearchPath = schema }.ConnectionString;
-    using var publisher = new ContentChangePublisher(Options.Create(new KafkaOptions
+    var producerOptions = Options.Create(new KafkaOptions
     {
         BootstrapServers = kafka, Topic = topic
-    }), NullLogger<ContentChangePublisher>.Instance);
+    });
+    await using var outbox = new KafkaOutboxStore(
+        Options.Create(new ContentHistoryOptions { ConnectionString = connection }));
+    await outbox.InitializeAsync(default);
+    using var producer = new KafkaProducer(producerOptions, outbox);
+    var publisher = new ContentChangePublisher(producerOptions, producer);
     await using var implementation = new PostgresContentHistoryStore(
         Options.Create(new ContentHistoryOptions { ConnectionString = connection }), publisher);
     IContentHistoryStore history = implementation;
@@ -121,22 +127,4 @@ static async Task WaitUntil(Func<bool> condition)
 {
     using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(45));
     while (!condition()) await Task.Delay(100, deadline.Token);
-}
-sealed class RecordingNotifications : INotificationService
-{
-    public System.Collections.Concurrent.ConcurrentQueue<EmailNotification> Sent { get; } = new();
-    public volatile bool FailNext;
-    public int Failures;
-    public Task SendAsync(EmailNotification notification, CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (FailNext)
-        {
-            FailNext = false;
-            Interlocked.Increment(ref Failures);
-            throw new InvalidOperationException("Simulated SMTP failure");
-        }
-        Sent.Enqueue(notification);
-        return Task.CompletedTask;
-    }
 }

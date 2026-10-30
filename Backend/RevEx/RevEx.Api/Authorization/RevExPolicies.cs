@@ -1,3 +1,4 @@
+
 namespace RevEx.Api.Authorization;
 
 public static class RevExPolicies

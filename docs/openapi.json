@@ -542,6 +542,22 @@
         "operationId": "Content_Query",
         "parameters": [
           {
+            "name": "Offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "Limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
             "name": "CategoryIds",
             "in": "query",
             "schema": {
@@ -1780,6 +1796,110 @@
         "x-authorization-policies": [
           "AdministerCatalog"
         ]
+      }
+    },
+    "/api/content/{contentId}/subscription": {
+      "get": {
+        "tags": [
+          "ContentSubscriptions"
+        ],
+        "operationId": "ContentSubscriptions_Get",
+        "parameters": [
+          {
+            "name": "contentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Требуется аутентификация."
+          },
+          "403": {
+            "description": "Недостаточно прав."
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ],
+        "x-authorization-policies": [ ]
+      },
+      "put": {
+        "tags": [
+          "ContentSubscriptions"
+        ],
+        "operationId": "ContentSubscriptions_Subscribe",
+        "parameters": [
+          {
+            "name": "contentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Требуется аутентификация."
+          },
+          "403": {
+            "description": "Недостаточно прав."
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ],
+        "x-authorization-policies": [ ]
+      },
+      "delete": {
+        "tags": [
+          "ContentSubscriptions"
+        ],
+        "operationId": "ContentSubscriptions_Unsubscribe",
+        "parameters": [
+          {
+            "name": "contentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Требуется аутентификация."
+          },
+          "403": {
+            "description": "Недостаточно прав."
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ],
+        "x-authorization-policies": [ ]
       }
     },
     "/api/content-versions": {
@@ -3390,6 +3510,188 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/revit-releases": {
+      "get": {
+        "tags": [
+          "RevitReleases"
+        ],
+        "operationId": "RevitReleases_List",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Требуется аутентификация."
+          },
+          "403": {
+            "description": "Недостаточно прав."
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ],
+        "x-authorization-policies": [
+          "AdministerCatalog"
+        ]
+      },
+      "post": {
+        "tags": [
+          "RevitReleases"
+        ],
+        "operationId": "RevitReleases_Upload",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "Version": {
+                    "type": "string"
+                  },
+                  "RevitVersion": {
+                    "type": "string"
+                  },
+                  "Notes": {
+                    "type": "string"
+                  },
+                  "File": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              },
+              "encoding": {
+                "Version": {
+                  "style": "form"
+                },
+                "RevitVersion": {
+                  "style": "form"
+                },
+                "Notes": {
+                  "style": "form"
+                },
+                "File": {
+                  "style": "form"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Требуется аутентификация."
+          },
+          "403": {
+            "description": "Недостаточно прав."
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ],
+        "x-authorization-policies": [
+          "AdministerCatalog"
+        ]
+      }
+    },
+    "/api/revit-releases/installers": {
+      "get": {
+        "tags": [
+          "RevitReleases"
+        ],
+        "operationId": "RevitReleases_Installers",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/revit-releases/{id}/publish": {
+      "post": {
+        "tags": [
+          "RevitReleases"
+        ],
+        "operationId": "RevitReleases_Publish",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevitPublication"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevitPublication"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevitPublication"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Требуется аутентификация."
+          },
+          "403": {
+            "description": "Недостаточно прав."
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ],
+        "x-authorization-policies": [
+          "AdministerCatalog"
+        ]
+      }
+    },
+    "/api/revit-releases/{id}/download": {
+      "get": {
+        "tags": [
+          "RevitReleases"
+        ],
+        "operationId": "RevitReleases_Download",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
           }
         }
       }
@@ -5057,6 +5359,15 @@
           }
         },
         "additionalProperties": { }
+      },
+      "RevitPublication": {
+        "type": "object",
+        "properties": {
+          "isPublished": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
       },
       "TagDto": {
         "type": "object",
