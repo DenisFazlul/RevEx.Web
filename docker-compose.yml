@@ -37,8 +37,8 @@ services:
     entrypoint: ["/bin/bash", "-ec"]
     command:
       - |
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic "$KAFKA_TOPIC" --partitions 1 --replication-factor 1
-        /opt/kafka/bin/kafka-configs.sh --bootstrap-server kafka:9092 --entity-type topics --entity-name "$KAFKA_TOPIC" --alter --add-config "retention.ms=$KAFKA_RETENTION_MS,cleanup.policy=delete,segment.ms=3600000,retention.bytes=-1"
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic "$$KAFKA_TOPIC" --partitions 1 --replication-factor 1
+        /opt/kafka/bin/kafka-configs.sh --bootstrap-server kafka:9092 --entity-type topics --entity-name "$$KAFKA_TOPIC" --alter --add-config "retention.ms=$$KAFKA_RETENTION_MS,cleanup.policy=delete,segment.ms=3600000,retention.bytes=-1"
 
   mongodb:
     image: mongo:8.0

@@ -44,3 +44,20 @@ Pending rows remain until sent; monitor API delivery warnings during long outage
 5. Inspect the effective topic settings:
    `docker compose exec kafka /opt/kafka/bin/kafka-configs.sh --bootstrap-server kafka:9092 --entity-type topics --entity-name content-changes --describe`
    Confirm `retention.ms=864000000` and `cleanup.policy=delete`.
+## Automated local integration check
+
+With the Compose stack running, execute:
+
+```powershell
+node Backend/RevEx/tests/ContentChangeChecks/http-checks.mjs
+```
+
+The check logs in through Keycloak using authorization code + PKCE and the admin
+credentials from the root `.env`; it does not enable password grants or bypass auth.
+It creates its own content, checks creation/update event payloads against database
+history, stops Kafka, verifies durable queueing across an API restart, restores Kafka,
+and checks delivery and event persistence across a broker restart. It then deletes
+the test content; audit entries remain intentionally. Run when brief interruptions
+of the local Kafka and API are acceptable. It also checks effective topic retention
+and that anonymous API requests remain unauthorized. It verifies the configured
+ten-day policy, without waiting ten days for segment deletion.
