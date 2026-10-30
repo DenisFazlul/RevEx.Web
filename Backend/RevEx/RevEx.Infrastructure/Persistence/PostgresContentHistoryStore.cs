@@ -40,9 +40,11 @@ public sealed class PostgresContentHistoryStore : IContentHistoryStore, IAsyncDi
                 id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                 user_id text NOT NULL, content_id integer NOT NULL, email text NOT NULL,
                 UNIQUE(content_id,user_id));
-            CREATE TABLE IF NOT EXISTS content_notification_queue(
-                event_id bigint NOT NULL REFERENCES content_history_events(id),
-                user_id text NOT NULL, email text NOT NULL, sent boolean NOT NULL DEFAULT false,
+            ALTER TABLE content_subscriptions
+                ADD COLUMN IF NOT EXISTS subscribed_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP;
+            CREATE TABLE IF NOT EXISTS content_notification_deliveries(
+                event_id bigint NOT NULL, user_id text NOT NULL,
+                delivered_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY(event_id,user_id));
             """;
 
@@ -85,17 +87,9 @@ public sealed class PostgresContentHistoryStore : IContentHistoryStore, IAsyncDi
         CancellationToken cancellationToken = default)
     {
         const string sql = """
-            WITH change AS (
-                INSERT INTO content_history_events (content_id, description, author)
-                VALUES ($1, $2, $3)
-                RETURNING id, occurred_at, content_id
-            ), queued AS (
-                INSERT INTO content_notification_queue(event_id, user_id, email)
-                SELECT change.id, subscription.user_id, subscription.email
-                FROM change JOIN content_subscriptions subscription
-                    ON subscription.content_id = change.content_id
-            )
-            SELECT id, occurred_at FROM change;
+            INSERT INTO content_history_events (content_id, description, author)
+            VALUES ($1, $2, $3)
+            RETURNING id, occurred_at;
             """;
 
         await using var command = _dataSource.CreateCommand(sql);

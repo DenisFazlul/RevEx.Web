@@ -1,3 +1,4 @@
+using RevEx.Domain.Contracts.ContentHistory;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using NotificationService;
@@ -12,8 +13,8 @@ public interface IContentSubscriptions
 }
 
 public sealed class ContentSubscriptions(IOptions<ContentHistoryOptions> options,
-    INotificationService notifications, ILogger<ContentSubscriptions> logger)
-    : BackgroundService, IContentSubscriptions
+    INotificationService notifications)
+    : IContentSubscriptions, IContentChangeHandler
 {
     private readonly string _connectionString = options.Value.ConnectionString;
 
@@ -40,51 +41,40 @@ public sealed class ContentSubscriptions(IOptions<ContentHistoryOptions> options
         await command.ExecuteNonQueryAsync(token);
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    public async Task HandleAsync(ContentHistoryEventDto change, CancellationToken cancellationToken)
     {
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            try
-            {
-                await DeliverAsync(stoppingToken);
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
-            catch (Exception exception) { logger.LogError(exception, "Content notification delivery failed; retrying."); }
-            await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
-        }
-    }
-
-    private async Task DeliverAsync(CancellationToken token)
-    {
+        var recipients = new List<(string UserId, string Email)>();
         await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(token);
-        // A transaction lock prevents simultaneous API instances sending the same batch.
-        await using var transaction = await connection.BeginTransactionAsync(token);
-        await using var select = new NpgsqlCommand("""
-            SELECT q.event_id,q.user_id,q.email,h.content_id,h.description,h.author,h.occurred_at
-            FROM content_notification_queue q JOIN content_history_events h ON h.id=q.event_id
-            WHERE NOT q.sent ORDER BY q.event_id LIMIT 50 FOR UPDATE OF q SKIP LOCKED
-            """, connection, transaction);
-        var pending = new List<(long Id,string User,string Email,int Content,string Description,string Author,DateTime Time)>();
-        await using (var reader = await select.ExecuteReaderAsync(token))
-            while (await reader.ReadAsync(token))
-                pending.Add((reader.GetInt64(0),reader.GetString(1),reader.GetString(2),reader.GetInt32(3),
-                    reader.GetString(4),reader.GetString(5),reader.GetDateTime(6)));
-        foreach (var item in pending)
+        await connection.OpenAsync(cancellationToken);
+        await using (var command = new NpgsqlCommand("""
+            SELECT s.user_id,s.email FROM content_subscriptions s
+            WHERE s.content_id=$1 AND s.subscribed_at <= $2
+                AND NOT EXISTS(SELECT 1 FROM content_notification_deliveries d
+                    WHERE d.event_id=$3 AND d.user_id=s.user_id)
+            """, connection))
         {
-            try
-            {
-                await notifications.SendAsync(new EmailNotification([item.Email],
-                    $"RevEx: изменение контента {item.Content}",
-                    $"{item.Description}\nАвтор: {item.Author}\nВремя (UTC): {item.Time:u}"), token);
-                await using var update = new NpgsqlCommand("UPDATE content_notification_queue SET sent=true WHERE event_id=$1 AND user_id=$2", connection, transaction);
-                update.Parameters.AddWithValue(item.Id);
-                update.Parameters.AddWithValue(item.User);
-                await update.ExecuteNonQueryAsync(token);
-            }
-            catch (Exception exception) when (!token.IsCancellationRequested)
-            { logger.LogWarning(exception, "Cannot deliver history event {EventId}", item.Id); }
+            command.Parameters.AddWithValue(change.ContentId);
+            command.Parameters.AddWithValue(change.OccurredAt);
+            command.Parameters.AddWithValue(change.Id);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                recipients.Add((reader.GetString(0), reader.GetString(1)));
         }
-        await transaction.CommitAsync(token);
+
+        foreach (var recipient in recipients)
+        {
+            // Failures propagate to the consumer: the Kafka offset must remain uncommitted.
+            await notifications.SendAsync(new EmailNotification([recipient.Email],
+                $"RevEx: изменение контента {change.ContentId}",
+                $"{change.Description}\nАвтор: {change.Author}\nВремя (UTC): {change.OccurredAt:u}"),
+                cancellationToken);
+            await using var delivered = new NpgsqlCommand("""
+                INSERT INTO content_notification_deliveries(event_id,user_id)
+                VALUES($1,$2) ON CONFLICT DO NOTHING
+                """, connection);
+            delivered.Parameters.AddWithValue(change.Id);
+            delivered.Parameters.AddWithValue(recipient.UserId);
+            await delivered.ExecuteNonQueryAsync(cancellationToken);
+        }
     }
 }

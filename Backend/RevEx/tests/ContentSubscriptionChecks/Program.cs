@@ -1,77 +1,141 @@
+using System.Text.Json;
+using Confluent.Kafka;
+using Confluent.Kafka.Admin;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using NotificationService;
 using Npgsql;
+using RevEx.Api.Subscriptions;
 using RevEx.Application.Abstractions.Persistence;
+using RevEx.Domain.Contracts.ContentHistory;
 using RevEx.Infrastructure.Persistence;
 
 var settings = Environment.GetEnvironmentVariable("REVEX_TEST_POSTGRES")
-    ?? throw new InvalidOperationException("Set REVEX_TEST_POSTGRES to a test PostgreSQL connection string.");
-var schema = "subscription_checks_" + Guid.NewGuid().ToString("N");
-await using var admin = NpgsqlDataSource.Create(settings);
-async Task Execute(string sql)
-{
-    await using var command = admin.CreateCommand(sql);
+    ?? throw new InvalidOperationException("Set REVEX_TEST_POSTGRES.");
+var kafka = Environment.GetEnvironmentVariable("REVEX_TEST_KAFKA")
+    ?? throw new InvalidOperationException("Set REVEX_TEST_KAFKA.");
+var suffix = Guid.NewGuid().ToString("N");
+var schema = "subscription_checks_" + suffix;
+var topic = "subscription-checks-" + suffix;
+await using var adminDb = NpgsqlDataSource.Create(settings);
+using var adminKafka = new AdminClientBuilder(new AdminClientConfig { BootstrapServers = kafka }).Build();
+await using (var command = adminDb.CreateCommand($"CREATE SCHEMA {schema}"))
     await command.ExecuteNonQueryAsync();
-}
-await Execute($"CREATE SCHEMA {schema}");
 try
 {
+    await adminKafka.CreateTopicsAsync([new TopicSpecification { Name = topic, NumPartitions = 1, ReplicationFactor = 1 }]);
     var connection = new NpgsqlConnectionStringBuilder(settings) { SearchPath = schema }.ConnectionString;
     using var publisher = new ContentChangePublisher(Options.Create(new KafkaOptions
     {
-        BootstrapServers = "localhost:1",
-        Topic = "subscription-checks"
+        BootstrapServers = kafka, Topic = topic
     }), NullLogger<ContentChangePublisher>.Instance);
     await using var implementation = new PostgresContentHistoryStore(
         Options.Create(new ContentHistoryOptions { ConnectionString = connection }), publisher);
-    IContentHistoryStore store = implementation;
-    await store.InitializeAsync();
-    await using var data = NpgsqlDataSource.Create(connection);
-    async Task Run(string sql)
+    IContentHistoryStore history = implementation;
+    await history.InitializeAsync();
+    var sender = new RecordingNotifications();
+    var subscriptions = new ContentSubscriptions(
+        Options.Create(new ContentHistoryOptions { ConnectionString = connection }), sender);
+    var consumerOptions = Options.Create(new ContentChangeConsumerOptions
     {
-        await using var command = data.CreateCommand(sql);
-        await command.ExecuteNonQueryAsync();
-    }
-    async Task<long> Count(string sql)
+        BootstrapServers = kafka, Topic = topic, NotificationGroupId = "checks-" + suffix
+    });
+    using var consumer = new KafkaContentNotificationConsumer(
+        consumerOptions, subscriptions, NullLogger<KafkaContentNotificationConsumer>.Instance);
+    await subscriptions.SetAsync(991, "first", "first@example.com", true, default);
+    await subscriptions.SetAsync(991, "second", "second@example.com", true, default);
+    await subscriptions.SetAsync(992, "other", "other@example.com", true, default);
+    async Task WaitForDeliveries(long expected)
     {
-        await using var command = data.CreateCommand(sql);
-        return (long)(await command.ExecuteScalarAsync())!;
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using var db = NpgsqlDataSource.Create(connection);
+        while (true)
+        {
+            await using var query = db.CreateCommand("SELECT count(*) FROM content_notification_deliveries");
+            if ((long)(await query.ExecuteScalarAsync(deadline.Token))! == expected) return;
+            await Task.Delay(50, deadline.Token);
+        }
     }
-    void Check(bool condition, string message)
-    {
-        if (!condition) throw new Exception(message);
-        Console.WriteLine("PASS: " + message);
-    }
-    await Run("""
-        INSERT INTO content_subscriptions(content_id,user_id,email)
-        VALUES(991,'first','first@example.com'),(991,'second','second@example.com'),(992,'other','other@example.com');
-        """);
-    var change = await store.AddAsync(991, "Updated description", "tester");
-    Check(await Count($"SELECT count(*) FROM content_notification_queue WHERE event_id={change.Id}") == 2,
-        "IContentHistoryStore.AddAsync queues only this content's subscribers.");
-    Check((await store.GetByContentIdAsync(991)).Single().Description == change.Description,
-        "The same event is available in history.");
-    await Run("DELETE FROM content_subscriptions WHERE user_id='second'");
-    var next = await store.AddAsync(991, "Next change", "tester");
-    Check(await Count($"SELECT count(*) FROM content_notification_queue WHERE event_id={next.Id}") == 1,
-        "Unsubscribed user gets no new notification.");
-
-    await Run("INSERT INTO content_history_events(content_id,description,author) VALUES(991,'Direct SQL','tester')");
-    Check(await Count("SELECT count(*) FROM content_notification_queue") == 3,
-        "Direct SQL inserts do not send notifications.");
-
-    var before = await Count("SELECT count(*) FROM content_history_events");
-    await Run("ALTER TABLE content_notification_queue ADD CONSTRAINT simulate_failure CHECK (event_id < 0) NOT VALID");
+    var change = await history.AddAsync(991, "Updated description", "tester");
+    Check(sender.Sent.Count == 0, "AddAsync publishes to Kafka without sending email.");
+    // Start after publication to verify delivery from Kafka, including retained events.
+    await consumer.StartAsync(default);
     try
     {
-        await store.AddAsync(991, "Must roll back", "tester");
-        throw new Exception("Queue failure was expected.");
+        await WaitUntil(() => sender.Sent.Count == 2);
+        Check(sender.Sent.SelectMany(x => x.To).Order().SequenceEqual(
+            new[] { "first@example.com", "second@example.com" }),
+            "Kafka event reaches only the content's subscribers.");
+        Check(sender.Sent.All(x => x.Body.Contains(change.Description) && x.Body.Contains(change.Author)),
+            "Messages contain the published history description and author.");
+
+        await WaitForDeliveries(2);
+        await consumer.ProcessAsync(JsonSerializer.Serialize(change, new JsonSerializerOptions(JsonSerializerDefaults.Web)), default);
+        Check(sender.Sent.Count == 2, "Replayed event does not resend successful deliveries.");
+
+        await subscriptions.SetAsync(991, "second", null, false, default);
+        var next = await history.AddAsync(991, "Next change", "tester");
+        await WaitUntil(() => sender.Sent.Count == 3);
+        Check(sender.Sent.Last().To.Single() == "first@example.com", "Unsubscribed user receives no new notification.");
+
+        await subscriptions.SetAsync(991, "late", "late@example.com", true, default);
+        await WaitForDeliveries(3);
+        await consumer.ProcessAsync(JsonSerializer.Serialize(next, new JsonSerializerOptions(JsonSerializerDefaults.Web)), default);
+        Check(sender.Sent.Count == 3, "New subscriber receives no earlier event on replay.");
+
+        sender.FailNext = true;
+        await history.AddAsync(991, "Retry failed delivery", "tester");
+        await WaitUntil(() => sender.Failures > 0);
+        await WaitUntil(() => sender.Sent.Count == 5);
+        Check(sender.Sent.Count == 5, "SMTP failure is retried from the pending Kafka message.");
+        using var offsetReader = new ConsumerBuilder<string,string>(new ConsumerConfig
+        {
+            BootstrapServers = kafka, GroupId = consumerOptions.Value.NotificationGroupId
+        }).Build();
+        await WaitUntil(() => offsetReader.Committed([new TopicPartition(topic, 0)], TimeSpan.FromSeconds(5))
+            .Single().Offset.Value == 3);
+        Check(true, "Consumer commits Kafka offsets after successful delivery.");
+
+        var count = sender.Sent.Count;
+        try { await consumer.ProcessAsync("{}", default); throw new Exception("Invalid event accepted"); }
+        catch (JsonException) { }
+        Check(sender.Sent.Count == count, "Malformed event sends no email.");
+        Check((await history.GetByContentIdAsync(991)).Count == 3, "All changes remain in history.");
     }
-    catch (PostgresException exception) when (exception.SqlState == "23514") { }
-    Check(await Count("SELECT count(*) FROM content_history_events") == before,
-        "Queue failure also rolls back the history event.");
+    finally { await consumer.StopAsync(default); }
 }
 finally
 {
-    await Execute($"DROP SCHEMA {schema} CASCADE");
+    await adminKafka.DeleteTopicsAsync([topic]);
+    await using var command = adminDb.CreateCommand($"DROP SCHEMA {schema} CASCADE");
+    await command.ExecuteNonQueryAsync();
+}
+
+static void Check(bool condition, string message)
+{
+    if (!condition) throw new Exception(message);
+    Console.WriteLine("PASS: " + message);
+}
+static async Task WaitUntil(Func<bool> condition)
+{
+    using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+    while (!condition()) await Task.Delay(100, deadline.Token);
+}
+sealed class RecordingNotifications : INotificationService
+{
+    public System.Collections.Concurrent.ConcurrentQueue<EmailNotification> Sent { get; } = new();
+    public volatile bool FailNext;
+    public int Failures;
+    public Task SendAsync(EmailNotification notification, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (FailNext)
+        {
+            FailNext = false;
+            Interlocked.Increment(ref Failures);
+            throw new InvalidOperationException("Simulated SMTP failure");
+        }
+        Sent.Enqueue(notification);
+        return Task.CompletedTask;
+    }
 }
