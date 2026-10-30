@@ -42,3 +42,5 @@ The versioned [OpenAPI JSON](docs/openapi.json) can be imported into API clients
 
 Сборки Revit хранятся отдельно в подкаталоге `.revit` каталога `DesktopReleases:Path`,
 в существующем Docker volume. Они не участвуют в проверках обновлений Desktop.
+
+Kafka content change events: [configuration and verification](docs/CONTENT-CHANGE-EVENTS.md).

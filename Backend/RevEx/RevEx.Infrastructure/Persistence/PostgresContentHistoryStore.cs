@@ -32,6 +32,7 @@ public sealed class PostgresContentHistoryStore : IContentHistoryStore, IAsyncDi
             );
             CREATE INDEX IF NOT EXISTS ix_content_history_events_content_time
                 ON content_history_events (content_id, occurred_at DESC, id DESC);
+            CREATE TABLE IF NOT EXISTS content_change_outbox (event_id bigint PRIMARY KEY REFERENCES content_history_events(id));
             ALTER TABLE content_history_events
                 ALTER COLUMN description TYPE text;
             """;
@@ -75,9 +76,12 @@ public sealed class PostgresContentHistoryStore : IContentHistoryStore, IAsyncDi
         CancellationToken cancellationToken = default)
     {
         const string sql = """
-            INSERT INTO content_history_events (content_id, description, author)
-            VALUES ($1, $2, $3)
-            RETURNING id, occurred_at;
+            WITH inserted AS (
+                INSERT INTO content_history_events (content_id, description, author)
+                VALUES ($1, $2, $3) RETURNING id, occurred_at
+            ), queued AS (
+                INSERT INTO content_change_outbox (event_id) SELECT id FROM inserted
+            ) SELECT id, occurred_at FROM inserted;
             """;
 
         await using var command = _dataSource.CreateCommand(sql);
