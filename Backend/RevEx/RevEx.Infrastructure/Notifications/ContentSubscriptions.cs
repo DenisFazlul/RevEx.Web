@@ -1,34 +1,21 @@
-using RevEx.Application.Subscriptions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using Npgsql;
+using RevEx.Application.Subscriptions;
 using RevEx.Infrastructure.Persistence;
-
 namespace RevEx.Infrastructure.Notifications;
-
 public sealed class ContentSubscriptions(IOptions<ContentHistoryOptions> options) : IContentSubscriptions
 {
-    private readonly string _connectionString = options.Value.ConnectionString;
-
+    private readonly PostgresContextFactory factory = new(options);
     public async Task<bool> GetAsync(int contentId, string userId, CancellationToken token)
     {
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(token);
-        await using var command = new NpgsqlCommand("SELECT EXISTS(SELECT 1 FROM content_subscriptions WHERE content_id=$1 AND user_id=$2)", connection);
-        command.Parameters.AddWithValue(contentId);
-        command.Parameters.AddWithValue(userId);
-        return (bool)(await command.ExecuteScalarAsync(token))!;
+        await using var db = factory.Create();
+        return await db.Database.SqlQuery<bool>($"SELECT EXISTS(SELECT 1 FROM content_subscriptions WHERE content_id={contentId} AND user_id={userId}) AS \"Value\"").SingleAsync(token);
     }
-
     public async Task SetAsync(int contentId, string userId, string? email, bool enabled, CancellationToken token)
     {
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(token);
-        await using var command = new NpgsqlCommand(enabled
-            ? "INSERT INTO content_subscriptions(content_id,user_id,email) VALUES($1,$2,$3) ON CONFLICT(content_id,user_id) DO UPDATE SET email=EXCLUDED.email"
-            : "DELETE FROM content_subscriptions WHERE content_id=$1 AND user_id=$2", connection);
-        command.Parameters.AddWithValue(contentId);
-        command.Parameters.AddWithValue(userId);
-        if (enabled) command.Parameters.AddWithValue(email!);
-        await command.ExecuteNonQueryAsync(token);
+        await using var db = factory.Create();
+        if (enabled)
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO content_subscriptions(content_id,user_id,email) VALUES({contentId},{userId},{email}) ON CONFLICT(content_id,user_id) DO UPDATE SET email=EXCLUDED.email", token);
+        else await db.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM content_subscriptions WHERE content_id={contentId} AND user_id={userId}", token);
     }
 }

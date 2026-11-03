@@ -8,14 +8,13 @@ namespace RevEx.Infrastructure.Data;
 public static class InitialDataSeeder
 {
     public static async Task SeedAsync(
-        IRepository<Category> categories,
-        IRepository<ContentStatus> statuses,
-        IRepository<TagGroup> tagGroups,
-        IRepository<ContentEntity> contents,
-        IRepository<ContentVersion> versions,
-        IRepository<ContentFile> files,
+        ICategoryRepository categories,
+        IContentStatusRepository statuses,
+        ITagGroupRepository tagGroups,
+        IContentRepository contents,
+        IContentVersionRepository versions,
+        IContentFileRepository files,
         IFileStorage fileStorage,
-        IUnitOfWork unitOfWork,
         CancellationToken cancellationToken = default)
     {
         var category = (await categories.GetAllAsync(cancellationToken)).FirstOrDefault(x => x.Name == "Общие");
@@ -63,7 +62,6 @@ public static class InitialDataSeeder
         await SeedDoorVersionAsync(door.Id, "2.0.0", new DateTimeOffset(2026, 1, 15, 0, 0, 0, TimeSpan.Zero),
             doorBytes, versions, files, fileStorage, cancellationToken);
 
-        await unitOfWork.SaveChangesAsync(cancellationToken);
     }
 
     private static async Task SeedDoorVersionAsync(
@@ -71,8 +69,8 @@ public static class InitialDataSeeder
         string name,
         DateTimeOffset date,
         byte[] bytes,
-        IRepository<ContentVersion> versions,
-        IRepository<ContentFile> files,
+        IContentVersionRepository versions,
+        IContentFileRepository files,
         IFileStorage fileStorage,
         CancellationToken cancellationToken)
     {

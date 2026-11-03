@@ -1,8 +1,8 @@
+using RevEx.Application.Abstractions.Persistence;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RevEx.Api.Authorization;
-using RevEx.Application.Abstractions.Persistence;
 using RevEx.Application.Abstractions.Storage;
 using RevEx.Domain.Contracts.DesktopReleases;
 

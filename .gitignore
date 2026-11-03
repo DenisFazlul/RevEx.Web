@@ -36,3 +36,4 @@ Thumbs.db
 **/*.pfx
 **/*.p12
 **/*.key
+/.tools/

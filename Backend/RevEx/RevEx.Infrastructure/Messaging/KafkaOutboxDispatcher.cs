@@ -6,12 +6,6 @@ namespace RevEx.Infrastructure.Messaging;
 public sealed class KafkaOutboxDispatcher(KafkaOutboxStore store, KafkaProducer producer,
     ILogger<KafkaOutboxDispatcher> logger) : BackgroundService
 {
-    public override async Task StartAsync(CancellationToken cancellationToken)
-    {
-        await store.InitializeAsync(cancellationToken);
-        await base.StartAsync(cancellationToken);
-    }
-
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)

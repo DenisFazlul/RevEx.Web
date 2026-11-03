@@ -1,3 +1,6 @@
+using Microsoft.EntityFrameworkCore;
+using RevEx.Application.Notifications;
+using RevEx.Infrastructure.Repositories;
 using RevEx.Infrastructure.Messaging;
 using RevEx.Infrastructure.Notifications;
 using System.Text.Json;
@@ -31,18 +34,19 @@ try
     });
     await using var outbox = new KafkaOutboxStore(
         Options.Create(new ContentHistoryOptions { ConnectionString = connection }));
-    await outbox.InitializeAsync(default);
+    await using (var db = new PostgresContextFactory(
+        Options.Create(new ContentHistoryOptions { ConnectionString = connection })).Create())
+        await db.Database.MigrateAsync();
     using var producer = new KafkaProducer(producerOptions, outbox);
     var publisher = new ContentChangePublisher(producerOptions, producer);
     await using var implementation = new PostgresContentHistoryStore(
         Options.Create(new ContentHistoryOptions { ConnectionString = connection }), publisher);
     IContentHistoryStore history = implementation;
-    await history.InitializeAsync();
     var sender = new RecordingNotifications();
     var subscriptions = new ContentSubscriptions(
         Options.Create(new ContentHistoryOptions { ConnectionString = connection }));
-    var handler = new ContentChangeHandler(
-        Options.Create(new ContentHistoryOptions { ConnectionString = connection }), sender);
+    var handler = new ContentChangeHandler(new ContentNotificationService(
+        new PostgresNotificationDeliveryStore(Options.Create(new ContentHistoryOptions { ConnectionString = connection })), sender));
     var consumerOptions = Options.Create(new ContentChangeConsumerOptions
     {
         BootstrapServers = kafka, Topic = topic, NotificationGroupId = "checks-" + suffix

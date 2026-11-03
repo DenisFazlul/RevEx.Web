@@ -16,8 +16,13 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton(configuration.GetSection("DesktopReleases").Get<DesktopReleaseOptions>() ?? new DesktopReleaseOptions());
         services.AddSingleton<IDesktopReleaseStore, FileDesktopReleaseStore>();
         services.AddSingleton<IRevitReleaseStore, FileRevitReleaseStore>();
-        services.AddScoped(typeof(IRepository<>), typeof(MongoRepository<>));
-        services.AddScoped<IUnitOfWork, MongoUnitOfWork>();
+        services.AddScoped<IContentRepository, MongoContentRepository>();
+        services.AddScoped<IContentFileRepository, MongoContentFileRepository>();
+        services.AddScoped<ITagGroupRepository, MongoTagGroupRepository>();
+        services.AddScoped<IContentStatusRepository, MongoContentStatusRepository>();
+        services.AddScoped<ICategoryRepository, MongoCategoryRepository>();
+        services.AddScoped<ITagRepository, MongoTagRepository>();
+        services.AddScoped<IContentVersionRepository, MongoContentVersionRepository>();
         services.AddScoped<IContentQueries, MongoContentQueries>();
 
         var options = configuration

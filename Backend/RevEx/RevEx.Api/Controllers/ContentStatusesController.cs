@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using RevEx.Api.Authorization;
-using RevEx.Application.Abstractions.Persistence;
 using RevEx.Domain.Contracts.ContentStatus;
 using RevEx.Domain.Entities;
 using ContentEntity = RevEx.Domain.Entities.Content;
@@ -10,17 +9,14 @@ namespace RevEx.Api.Controllers;
 
 [ApiController]
 [Route("api/content-statuses")]
-public sealed class ContentStatusesController(
-    IRepository<ContentStatus> repository,
-    IRepository<ContentEntity> contentRepository,
-    IUnitOfWork unitOfWork) : ControllerBase
+public sealed class ContentStatusesController(RevEx.Application.Catalog.ContentStatusesService service) : ControllerBase
 {
+
     [HttpGet]
     [ProducesResponseType<IReadOnlyCollection<ContentStatusDto>>(200)]
     public async Task<ActionResult<IReadOnlyCollection<ContentStatusDto>>> GetAll(CancellationToken cancellationToken)
     {
-        var entities = await repository.GetAllAsync(cancellationToken);
-        return Ok(entities.Select(Map).ToArray());
+        return Ok(await service.GetAll(cancellationToken));
     }
 
     [HttpGet("{id:int}")]
@@ -28,8 +24,7 @@ public sealed class ContentStatusesController(
     [ProducesResponseType(404)]
     public async Task<ActionResult<ContentStatusDto>> GetById(int id, CancellationToken cancellationToken)
     {
-        var entity = await repository.GetByIdAsync(id, cancellationToken);
-        return entity is null ? NotFound() : Ok(Map(entity));
+        return Ok(await service.GetById(id, cancellationToken));
     }
 
     [HttpPost]
@@ -41,22 +36,8 @@ public sealed class ContentStatusesController(
         CreateContentStatusDto request,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.Name))
-        {
-            return ValidationProblem("Name must not be empty.");
-        }
-
-        var name = request.Name.Trim();
-        var statuses = await repository.GetAllAsync(cancellationToken);
-        if (statuses.Any(item => string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase)))
-        {
-            return Conflict(new { message = "A content status with this name already exists." });
-        }
-
-        var entity = new ContentStatus { Name = name };
-        await repository.AddAsync(entity, cancellationToken);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
-        return CreatedAtAction(nameof(GetById), new { id = entity.Id }, Map(entity));
+        var result = await service.Create(request, cancellationToken);
+        return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
     }
 
     [HttpPut("{id:int}")]
@@ -70,27 +51,7 @@ public sealed class ContentStatusesController(
         UpdateContentStatusDto request,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.Name))
-        {
-            return ValidationProblem("Name must not be empty.");
-        }
-
-        var entity = await repository.GetByIdAsync(id, cancellationToken);
-        if (entity is null)
-        {
-            return NotFound();
-        }
-
-        var name = request.Name.Trim();
-        var statuses = await repository.GetAllAsync(cancellationToken);
-        if (statuses.Any(item => item.Id != id && string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase)))
-        {
-            return Conflict(new { message = "A content status with this name already exists." });
-        }
-
-        entity.Name = name;
-        await repository.UpdateAsync(entity, cancellationToken);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
+        await service.Update(id, request, cancellationToken);
         return NoContent();
     }
 
@@ -101,23 +62,7 @@ public sealed class ContentStatusesController(
     [ProducesResponseType(409)]
     public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)
     {
-        var entity = await repository.GetByIdAsync(id, cancellationToken);
-        if (entity is null)
-        {
-            return NotFound();
-        }
-
-        var contents = await contentRepository.GetAllAsync(cancellationToken);
-        if (contents.Any(content => content.ContentStatusId == id))
-        {
-            return Conflict(new { message = "The status is used by content and cannot be deleted." });
-        }
-
-        await repository.DeleteAsync(entity, cancellationToken);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
+        await service.Delete(id, cancellationToken);
         return NoContent();
     }
-
-    private static ContentStatusDto Map(ContentStatus entity) =>
-        new(entity.Id, entity.Name, entity.CreatedAt, entity.UpdatedAt);
 }

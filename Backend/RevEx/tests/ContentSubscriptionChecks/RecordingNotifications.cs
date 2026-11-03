@@ -1,3 +1,4 @@
+using RevEx.Application.Notifications;
 using RevEx.Infrastructure.Notifications;
 using System.Text.Json;
 using Confluent.Kafka;

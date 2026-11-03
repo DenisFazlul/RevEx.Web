@@ -7,17 +7,23 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="AWSSDK.S3" Version="4.0.103.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.20">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="8.0.20" />
     <PackageReference Include="MongoDB.Driver" Version="3.5.2" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.2" />
     <PackageReference Include="Confluent.Kafka" Version="2.6.1" />
+    <PackageReference Include="MongoDB.EntityFrameworkCore" Version="8.3.2" />
     <PackageReference Include="Npgsql" Version="8.0.6" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.11" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\RevEx.Application\RevEx.Application.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="Data/SeedFiles/Door-Single-Glass-Push-Plate.rfa"
-                      LogicalName="RevEx.SeedFiles.Door-Single-Glass-Push-Plate.rfa" />
+    <EmbeddedResource Include="Data/SeedFiles/Door-Single-Glass-Push-Plate.rfa" LogicalName="RevEx.SeedFiles.Door-Single-Glass-Push-Plate.rfa" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../../../RevEx.Domain/src/RevEx.Domain/RevEx.Domain.csproj" Condition="'$(UseRevExDomainPackage)' != 'true'" />

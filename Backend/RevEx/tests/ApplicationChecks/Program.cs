@@ -12,16 +12,16 @@ static async Task Failure(Func<Task> action, ContentFailure kind)
     try { await action(); } catch (ContentOperationException e) when (e.Failure == kind) { return; }
     throw new Exception("Expected " + kind);
 }
-var contents = new Repository<Content>();
-var categories = new Repository<Category>();
-var statuses = new Repository<ContentStatus>();
-var tags = new Repository<Tag>();
-var files = new Repository<ContentFile>();
+var contents = new ContentRepository();
+var categories = new CategoryRepository();
+var statuses = new ContentStatusRepository();
+var tags = new TagRepository();
+var files = new ContentFileRepository();
 var history = new History();
 var storage = new Storage();
 var queries = new Queries();
 var service = new ContentService(contents, categories, statuses, tags, files,
-    new Repository<ContentVersion>(), history, storage, new UnitOfWork(), queries, new User());
+    new ContentVersionRepository(), history, storage, queries, new User());
 await Failure(() => service.Create(new(), default), ContentFailure.Validation);
 await Failure(() => service.Create(new() { Name = "Name", Description = "Description", CategoryId = 1 }, default), ContentFailure.NotFound);
 Check(contents.Items.Count == 0 && history.Items.Count == 0);

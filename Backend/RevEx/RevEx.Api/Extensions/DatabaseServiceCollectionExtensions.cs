@@ -1,3 +1,4 @@
+using RevEx.Infrastructure.Repositories;
 using RevEx.Application.Abstractions.Messaging;
 using RevEx.Infrastructure.Messaging;
 using RevEx.Application.Abstractions.Persistence;
@@ -12,9 +13,12 @@ public static class DatabaseServiceCollectionExtensions
         IConfiguration configuration)
     {
         services.Configure<MongoDbOptions>(configuration.GetRequiredSection(MongoDbOptions.SectionName));
-        services.AddSingleton<MongoDbContext>();
+        services.AddScoped<MongoDbContext>();
+        services.AddScoped<RevEx.Application.Comments.ICommentStore, PostgresCommentStore>();
         services.Configure<ContentHistoryOptions>(
             configuration.GetRequiredSection(ContentHistoryOptions.SectionName));
+        services.AddSingleton<PostgresContextFactory>();
+        services.AddScoped<PostgresDbContext>(sp => sp.GetRequiredService<PostgresContextFactory>().Create());
         services.AddSingleton<IContentHistoryStore, PostgresContentHistoryStore>();
         services.AddSingleton<IDesktopUpdateTrackingStore, PostgresDesktopUpdateTrackingStore>();
 

@@ -7,15 +7,14 @@ using ContentEntity = RevEx.Domain.Entities.Content;
 namespace RevEx.Application.Content;
 
 public sealed class ContentService(
-    IRepository<ContentEntity> repository,
-    IRepository<Category> categoryRepository,
-    IRepository<ContentStatus> statusRepository,
-    IRepository<Tag> tagRepository,
-    IRepository<ContentFile> fileRepository,
-    IRepository<ContentVersion> versionRepository,
+    IContentRepository repository,
+    ICategoryRepository categoryRepository,
+    IContentStatusRepository statusRepository,
+    ITagRepository tagRepository,
+    IContentFileRepository fileRepository,
+    IContentVersionRepository versionRepository,
     IContentHistoryStore historyStore,
     IFileStorage fileStorage,
-    IUnitOfWork unitOfWork,
     IContentQueries queries,
     RevEx.Application.Abstractions.Identity.ICurrentUser currentUser)
 {
@@ -79,7 +78,7 @@ public sealed class ContentService(
         };
 
         await repository.AddAsync(entity, cancellationToken);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
+
         await historyStore.AddAsync(
             entity.Id,
             $"Контент создан. Название: {Quote(entity.Name)}; описание: {Quote(entity.Description)}; " +
@@ -157,7 +156,7 @@ public sealed class ContentService(
             }
         }
         await repository.UpdateAsync(entity, cancellationToken);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
+
         if (historyDescription is not null)
         {
             await historyStore.AddAsync(
@@ -206,8 +205,12 @@ public sealed class ContentService(
             }
         }
 
+        foreach (var file in ownedFiles.DistinctBy(file => file.Id).Where(file => file.Id != entity.PreviewFileId))
+            await fileRepository.DeleteAsync(file, cancellationToken);
+        foreach (var version in versions.Where(version => version.ContentId == id))
+            await versionRepository.DeleteAsync(version, cancellationToken);
         await repository.DeleteAsync(entity, cancellationToken);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
+
         await historyStore.AddAsync(
             id,
             $"Контент удалён. Название: {Quote(entity.Name)}; описание: {Quote(entity.Description)}; " +
@@ -248,7 +251,7 @@ public sealed class ContentService(
             Role = "preview"
         };
         await fileRepository.AddAsync(previewFile, cancellationToken);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
+
 
         try
         {
@@ -262,13 +265,13 @@ public sealed class ContentService(
             entity.PreviewFile = previewFile;
             await fileRepository.UpdateAsync(previewFile, cancellationToken);
             await repository.UpdateAsync(entity, cancellationToken);
-            await unitOfWork.SaveChangesAsync(cancellationToken);
+
         }
         catch
         {
             await fileStorage.DeleteAsync(previewFile.Id, CancellationToken.None);
             await fileRepository.DeleteAsync(previewFile, CancellationToken.None);
-            await unitOfWork.SaveChangesAsync(CancellationToken.None);
+
             throw;
         }
 
@@ -279,7 +282,7 @@ public sealed class ContentService(
             if (oldFile is not null)
             {
                 await fileRepository.DeleteAsync(oldFile, cancellationToken);
-                await unitOfWork.SaveChangesAsync(cancellationToken);
+
             }
         }
 
@@ -310,13 +313,13 @@ public sealed class ContentService(
         entity.PreviewFileId = null;
         entity.PreviewFile = null;
         await repository.UpdateAsync(entity, cancellationToken);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
+
         await fileStorage.DeleteAsync(fileId, cancellationToken);
         var file = await fileRepository.GetByIdAsync(fileId, cancellationToken);
         if (file is not null)
         {
             await fileRepository.DeleteAsync(file, cancellationToken);
-            await unitOfWork.SaveChangesAsync(cancellationToken);
+
         }
 
         await historyStore.AddAsync(

@@ -13,6 +13,7 @@ public sealed class ContentOperationExceptionFilter(ProblemDetailsFactory proble
         context.Result = error.Failure switch
         {
             ContentFailure.NotFound => error.Detail is null ? new NotFoundResult() : new NotFoundObjectResult(new { message = error.Detail }),
+            ContentFailure.Conflict => new ConflictObjectResult(new { message = error.Detail }),
             ContentFailure.BadRequest => new BadRequestObjectResult(new { message = error.Detail }),
             _ => new BadRequestObjectResult(problemDetails.CreateValidationProblemDetails(context.HttpContext, new ModelStateDictionary(), detail: error.Detail))
         };

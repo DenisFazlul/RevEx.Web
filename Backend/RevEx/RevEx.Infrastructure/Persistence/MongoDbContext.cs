@@ -1,79 +1,51 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
+using Tag = RevEx.Domain.Entities.Tag;
+using MongoDB.EntityFrameworkCore.Extensions;
 using RevEx.Domain.Entities;
-using DomainTag = RevEx.Domain.Entities.Tag;
 
 namespace RevEx.Infrastructure.Persistence;
 
-public sealed class MongoDbContext
+public sealed class MongoDbContext : DbContext
 {
-    private static readonly object MappingLock = new();
-    private static bool _mappingConfigured;
-
-    public MongoDbContext(IOptions<MongoDbOptions> options)
+    private readonly MongoDbOptions settings;
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, MongoClient> Clients = new();
+    public MongoDbContext(IOptions<MongoDbOptions> options) => settings = options.Value;
+    protected override void OnConfiguring(DbContextOptionsBuilder options) => options.UseMongoDB(settings.ConnectionString, settings.DatabaseName);
+    protected override void OnModelCreating(ModelBuilder model)
     {
-        ConfigureMappings();
-        var settings = options.Value;
-        Database = new MongoClient(settings.ConnectionString).GetDatabase(settings.DatabaseName);
+        Configure<Category>(model, "Contents");
+        Configure<Content>(model, "Category", "ContentStatus", "PreviewFile", "Versions", "Tags");
+        Configure<ContentVersion>(model, "Content", "Files");
+        Configure<ContentFile>(model, "ContentVersion");
+        Configure<ContentStatus>(model, "Contents");
+        Configure<Tag>(model, "TagGroup", "Contents");
+        Configure<TagGroup>(model, "Tags");
     }
-
-    public IMongoDatabase Database { get; }
-
-    public IMongoCollection<TEntity> Collection<TEntity>() where TEntity : class =>
-        Database.GetCollection<TEntity>(CollectionName(typeof(TEntity)));
-
-    public static string CollectionName(Type type)
+    private static void Configure<T>(ModelBuilder model, params string[] ignored) where T : class
     {
-        if (type == typeof(Category)) return "categories";
-        if (type == typeof(Content)) return "contents";
-        if (type == typeof(ContentVersion)) return "contentVersions";
-        if (type == typeof(ContentFile)) return "contentFiles";
-        if (type == typeof(ContentStatus)) return "contentStatuses";
-        if (type == typeof(DomainTag)) return "tags";
-        if (type == typeof(TagGroup)) return "tagGroups";
-        throw new NotSupportedException($"MongoDB collection for {type.Name} is not configured.");
+        var entity = model.Entity<T>();
+        entity.ToCollection(CollectionName(typeof(T)));
+        entity.HasKey("Id");
+        entity.Property<int>("Id").ValueGeneratedNever();
+        foreach (var name in ignored) entity.Ignore(name);
     }
-
-    private static void ConfigureMappings()
+    public static string CollectionName(Type type) => type.Name switch
     {
-        lock (MappingLock)
-        {
-            if (_mappingConfigured) return;
-            Map<Category>(map => map.UnmapMember(x => x.Contents));
-            Map<Content>(map =>
-            {
-                map.UnmapMember(x => x.Category);
-                map.UnmapMember(x => x.ContentStatus);
-                map.UnmapMember(x => x.PreviewFile);
-                map.UnmapMember(x => x.Versions);
-                map.UnmapMember(x => x.Tags);
-            });
-            Map<ContentVersion>(map =>
-            {
-                map.UnmapMember(x => x.Content);
-                map.UnmapMember(x => x.Files);
-            });
-            Map<ContentFile>(map => map.UnmapMember(x => x.ContentVersion));
-            Map<ContentStatus>(map => map.UnmapMember(x => x.Contents));
-            Map<DomainTag>(map =>
-            {
-                map.UnmapMember(x => x.TagGroup);
-                map.UnmapMember(x => x.Contents);
-            });
-            Map<TagGroup>(map => map.UnmapMember(x => x.Tags));
-            _mappingConfigured = true;
-        }
-    }
-
-    private static void Map<TEntity>(Action<BsonClassMap<TEntity>> configure)
+        nameof(Category) => "categories", nameof(Content) => "contents",
+        nameof(ContentVersion) => "contentVersions", nameof(ContentFile) => "contentFiles",
+        nameof(ContentStatus) => "contentStatuses", nameof(Tag) => "tags", nameof(TagGroup) => "tagGroups",
+        _ => throw new NotSupportedException(type.Name)
+    };
+    // Atomic counters are a provider escape hatch: EF cannot express find-and-increment.
+    public async Task<int> NextIdAsync<T>(CancellationToken token)
     {
-        if (BsonClassMap.IsClassMapRegistered(typeof(TEntity))) return;
-        BsonClassMap.RegisterClassMap<TEntity>(map =>
-        {
-            map.AutoMap();
-            map.MapIdMember(typeof(TEntity).GetProperty("Id")!);
-            configure(map);
-        });
+        var counters = Clients.GetOrAdd(settings.ConnectionString, value => new MongoClient(value)).GetDatabase(settings.DatabaseName).GetCollection<Repositories.Counter>("counters");
+        var result = await counters.FindOneAndUpdateAsync(
+            Builders<Repositories.Counter>.Filter.Eq(x => x.Id, CollectionName(typeof(T))),
+            Builders<Repositories.Counter>.Update.Inc(x => x.Sequence, 1),
+            new FindOneAndUpdateOptions<Repositories.Counter> { IsUpsert = true, ReturnDocument = ReturnDocument.After }, token);
+        return result.Sequence;
     }
 }

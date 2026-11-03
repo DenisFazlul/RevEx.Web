@@ -1,3 +1,4 @@
+using RevEx.Application.Notifications;
 using RevEx.Application.Subscriptions;
 using System.Net;
 using System.Net.Mail;

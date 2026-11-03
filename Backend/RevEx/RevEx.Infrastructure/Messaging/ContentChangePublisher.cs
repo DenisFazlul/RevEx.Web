@@ -3,7 +3,8 @@ using Microsoft.Extensions.Options;
 using RevEx.Application.Abstractions.Messaging;
 using RevEx.Domain.Contracts.ContentHistory;
 
-namespace RevEx.Infrastructure.Persistence;
+using RevEx.Infrastructure.Persistence;
+namespace RevEx.Infrastructure.Messaging;
 
 public sealed class ContentChangePublisher(IOptions<KafkaOptions> options, IKafkaProducer producer)
 {

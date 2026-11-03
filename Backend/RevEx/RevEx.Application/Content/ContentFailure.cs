@@ -1,4 +1,4 @@
 
 namespace RevEx.Application.Content;
 
-public enum ContentFailure { NotFound, Validation, BadRequest }
+public enum ContentFailure { NotFound, Validation, BadRequest, Conflict }

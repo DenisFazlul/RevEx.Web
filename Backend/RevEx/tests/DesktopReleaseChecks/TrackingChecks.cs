@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+using RevEx.Infrastructure.Repositories;
 using Microsoft.Extensions.Options;
 using RevEx.Domain.Contracts.DesktopReleases;
 using RevEx.Infrastructure.Persistence;
@@ -6,11 +8,39 @@ internal static class TrackingChecks
 {
     public static async Task RunAsync(string connectionString)
     {
+        await using var admin = Npgsql.NpgsqlDataSource.Create(connectionString);
+        var schema = "ef_migration_checks_" + Guid.NewGuid().ToString("N");
+        await using (var command = admin.CreateCommand($"CREATE SCHEMA {schema}")) await command.ExecuteNonQueryAsync();
+        try
+        {
+            var isolated = new Npgsql.NpgsqlConnectionStringBuilder(connectionString) { SearchPath = schema }.ConnectionString;
+            var factory = new PostgresContextFactory(Options.Create(new ContentHistoryOptions { ConnectionString = isolated }));
+            await using (var db = factory.Create())
+            {
+                await db.Database.MigrateAsync();
+                db.History.Add(new ContentHistoryEvent { ContentId = 123, Description = "Preserve legacy data", Author = "checks" });
+                await db.SaveChangesAsync();
+                await Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions.ExecuteSqlRawAsync(db.Database,
+                    "DROP TABLE \"__EFMigrationsHistory\"; ALTER TABLE content_subscriptions DROP COLUMN subscribed_at; ALTER TABLE content_history_events ALTER COLUMN description TYPE varchar(300)");
+            }
+            await using (var db = factory.Create())
+                await db.Database.MigrateAsync();
+            await using var verify = factory.Create();
+            await verify.Database.MigrateAsync();
+            if (await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.CountAsync(verify.History) != 1)
+                throw new Exception("Legacy migration lost history");
+            Console.WriteLine("PASS: Fresh migrations, legacy adoption, repeated migration and history preservation");
+        }
+        finally
+        {
+            await using var cleanup = admin.CreateCommand($"DROP SCHEMA {schema} CASCADE");
+            await cleanup.ExecuteNonQueryAsync();
+        }
         var options = Options.Create(new ContentHistoryOptions { ConnectionString = connectionString });
         await using var store = new PostgresDesktopUpdateTrackingStore(options);
         var ct = CancellationToken.None;
-        await store.InitializeAsync(ct);
-        await store.InitializeAsync(ct);
+        await using (var db = new PostgresContextFactory(options).Create())
+            await db.Database.MigrateAsync(ct);
         void Check(bool condition, string name)
         {
             if (!condition) throw new Exception(name);
@@ -47,7 +77,6 @@ internal static class TrackingChecks
         var secondMachine = request with { InstallationId = Guid.NewGuid(), Version = "2.0.0" };
         await store.ObserveAsync(secondMachine, "alice-id", "Alice", ct);
         await using var restarted = new PostgresDesktopUpdateTrackingStore(options);
-        await restarted.InitializeAsync(ct);
         var history = await restarted.GetHistoryAsync(500, ct);
         Check(history.Installations.Count(x => x.UserId == "alice-id" && (x.InstallationId == request.InstallationId || x.InstallationId == secondMachine.InstallationId)) == 2,
             "User versions are tracked separately for multiple machines");

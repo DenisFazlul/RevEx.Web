@@ -8,26 +8,17 @@ namespace RevEx.Api.Extensions;
 
 public static class WebApplicationExtensions
 {
-    public static async Task InitializeContentHistoryAsync(this WebApplication app)
-    {
-        await using var scope = app.Services.CreateAsyncScope();
-        var store = scope.ServiceProvider.GetRequiredService<IContentHistoryStore>();
-        await store.InitializeAsync();
-        await scope.ServiceProvider.GetRequiredService<IDesktopUpdateTrackingStore>().InitializeAsync();
-    }
-
     public static async Task SeedInitialDataAsync(this WebApplication app)
     {
         await using var scope = app.Services.CreateAsyncScope();
         await InitialDataSeeder.SeedAsync(
-            scope.ServiceProvider.GetRequiredService<IRepository<Category>>(),
-            scope.ServiceProvider.GetRequiredService<IRepository<ContentStatus>>(),
-            scope.ServiceProvider.GetRequiredService<IRepository<TagGroup>>(),
-            scope.ServiceProvider.GetRequiredService<IRepository<ContentEntity>>(),
-            scope.ServiceProvider.GetRequiredService<IRepository<ContentVersion>>(),
-            scope.ServiceProvider.GetRequiredService<IRepository<ContentFile>>(),
-            scope.ServiceProvider.GetRequiredService<IFileStorage>(),
-            scope.ServiceProvider.GetRequiredService<IUnitOfWork>());
+            scope.ServiceProvider.GetRequiredService<ICategoryRepository>(),
+            scope.ServiceProvider.GetRequiredService<IContentStatusRepository>(),
+            scope.ServiceProvider.GetRequiredService<ITagGroupRepository>(),
+            scope.ServiceProvider.GetRequiredService<IContentRepository>(),
+            scope.ServiceProvider.GetRequiredService<IContentVersionRepository>(),
+            scope.ServiceProvider.GetRequiredService<IContentFileRepository>(),
+            scope.ServiceProvider.GetRequiredService<IFileStorage>());
     }
 
     public static WebApplication UseApiSwagger(this WebApplication app)

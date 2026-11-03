@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using RevEx.Api.Authorization;
 using RevEx.Api.Models;
-using RevEx.Application.Abstractions.Persistence;
 using RevEx.Application.Abstractions.Storage;
 using RevEx.Domain.Contracts.ContentVersion;
 using RevEx.Domain.Entities;
@@ -12,32 +11,15 @@ namespace RevEx.Api.Controllers;
 
 [ApiController]
 [Route("api/content-versions")]
-public sealed class ContentVersionsController(RevEx.Application.Abstractions.Identity.ICurrentUser currentUser,
-
-    IRepository<ContentEntity> contentRepository,
-    IRepository<ContentVersion> versionRepository,
-    IRepository<ContentFile> fileRepository,
-    IContentHistoryStore historyStore,
-    IUnitOfWork unitOfWork,
-    IFileStorage fileStorage) : ControllerBase
+public sealed class ContentVersionsController(RevEx.Application.Catalog.ContentVersionsService service) : ControllerBase
 {
-    private const long MaximumFileSizeBytes = 100 * 1024 * 1024;
-    private static readonly IReadOnlyDictionary<string, string[]> AllowedExtensionsByRole =
-        new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["primary"] = [".rfa"],
-            ["type-catalog"] = [".txt"],
-            ["lookup-table"] = [".csv"],
-            ["attachment"] = [".txt", ".csv", ".pdf"]
-        };
 
     [HttpGet]
     [ProducesResponseType<IReadOnlyCollection<ContentVersionDto>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyCollection<ContentVersionDto>>> GetAll(
         CancellationToken cancellationToken)
     {
-        var entities = await versionRepository.GetAllAsync(cancellationToken);
-        return Ok(entities.Select(Map).ToArray());
+        return Ok(await service.GetAll(cancellationToken));
     }
 
     [HttpGet("{id:int}")]
@@ -47,8 +29,7 @@ public sealed class ContentVersionsController(RevEx.Application.Abstractions.Ide
         int id,
         CancellationToken cancellationToken)
     {
-        var entity = await versionRepository.GetByIdAsync(id, cancellationToken);
-        return entity is null ? NotFound() : Ok(Map(entity));
+        return Ok(await service.GetById(id, cancellationToken));
     }
 
     [HttpPost]
@@ -60,35 +41,8 @@ public sealed class ContentVersionsController(RevEx.Application.Abstractions.Ide
         CreateContentVersionDto request,
         CancellationToken cancellationToken)
     {
-        var content = await contentRepository.GetByIdAsync(request.ContentId, cancellationToken);
-        if (content is null)
-        {
-            return NotFound(new { message = $"Content with id {request.ContentId} was not found." });
-        }
-
-        var entity = new ContentVersion
-        {
-            ContentId = content.Id,
-            Content = content,
-            Name = string.IsNullOrWhiteSpace(request.Name) ? "Новая версия" : request.Name.Trim(),
-            Date = request.Date ?? DateTimeOffset.UtcNow,
-            Status = request.Status ?? "draft",
-            Application = request.Application.Trim().ToLowerInvariant(),
-            ApplicationVersion = request.ApplicationVersion.Trim()
-        };
-
-        await versionRepository.AddAsync(entity, cancellationToken);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
-        await historyStore.AddAsync(
-            entity.ContentId,
-            $"Версия создана. Название: {Quote(entity.Name)}; дата: {Quote(FormatDate(entity.Date))}; " +
-            $"статус: {Quote(entity.Status)}; приложение: {Quote(entity.Application)}; " +
-            $"версия приложения: {Quote(entity.ApplicationVersion)}.",
-            currentUser.Author,
-            cancellationToken);
-
-        var result = Map(entity);
-        return CreatedAtAction(nameof(GetById), new { id = entity.Id }, result);
+        var result = await service.Create(request, cancellationToken);
+        return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
     }
 
     [HttpPost("{id:int}/file")]
@@ -102,75 +56,8 @@ public sealed class ContentVersionsController(RevEx.Application.Abstractions.Ide
         [FromForm] UploadFileRequest request,
         CancellationToken cancellationToken)
     {
-        var version = await versionRepository.GetByIdAsync(id, cancellationToken);
-        if (version is null)
-        {
-            return NotFound();
-        }
-
-        if (request.File.Length == 0 || request.File.Length > MaximumFileSizeBytes)
-        {
-            return BadRequest(new { message = "The uploaded file must be between 1 byte and 100 MB." });
-        }
-
-        var role = request.Role.Trim().ToLowerInvariant();
-        var originalFileName = Path.GetFileName(request.File.FileName);
-        var extension = Path.GetExtension(originalFileName).ToLowerInvariant();
-        if (string.IsNullOrWhiteSpace(originalFileName) ||
-            !AllowedExtensionsByRole.TryGetValue(role, out var allowedExtensions) ||
-            !allowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
-        {
-            return BadRequest(new
-            {
-                message = "The file extension is not allowed for the selected file role."
-            });
-        }
-
-        if (role == "primary" && version.Files.Any(item => item.Role == "primary"))
-        {
-            return Conflict(new { message = "This content version already has a primary Revit file." });
-        }
-
-        var file = new ContentFile
-        {
-            Url = "pending",
-            OriginalFileName = originalFileName,
-            Extension = extension,
-            SizeBytes = request.File.Length,
-            Role = role,
-            ContentVersionId = version.Id,
-            ContentVersion = version
-        };
-        await fileRepository.AddAsync(file, cancellationToken);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
-
-        try
-        {
-            await using var stream = request.File.OpenReadStream();
-            await fileStorage.SaveAsync(file.Id, stream, cancellationToken);
-
-            file.Url = $"/api/content-files/{file.Id}/content";
-
-            await fileRepository.UpdateAsync(file, cancellationToken);
-            await versionRepository.UpdateAsync(version, cancellationToken);
-            await unitOfWork.SaveChangesAsync(cancellationToken);
-        }
-        catch
-        {
-            await fileStorage.DeleteAsync(file.Id, CancellationToken.None);
-            await fileRepository.DeleteAsync(file, CancellationToken.None);
-            await unitOfWork.SaveChangesAsync(CancellationToken.None);
-            throw;
-        }
-
-        await historyStore.AddAsync(
-            version.ContentId,
-            $"Файл версии {Quote(version.Name)} изменён: {Quote("не задано")} → {Quote(originalFileName)}; " +
-            $"роль: {Quote(role)}; размер: {request.File.Length} байт.",
-            currentUser.Author,
-            cancellationToken);
-
-        return CreatedAtAction(nameof(GetById), new { id = version.Id }, Map(version));
+        var result = await service.AddFile(id, new RevEx.Application.Catalog.VersionFileUpload(request.File.FileName, request.File.Length, request.File.OpenReadStream, request.Role), cancellationToken);
+        return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
     }
 
     [HttpDelete("{id:int}/files/{fileId:int}")]
@@ -182,29 +69,7 @@ public sealed class ContentVersionsController(RevEx.Application.Abstractions.Ide
         int fileId,
         CancellationToken cancellationToken)
     {
-        var version = await versionRepository.GetByIdAsync(id, cancellationToken);
-        if (version is null)
-        {
-            return NotFound();
-        }
-
-        var file = version.Files.FirstOrDefault(item => item.Id == fileId);
-        if (file is null)
-        {
-            return NotFound(new { message = $"File {fileId} is not attached to content version {id}." });
-        }
-
-        version.Files.Remove(file);
-        await fileStorage.DeleteAsync(file.Id, cancellationToken);
-        await fileRepository.DeleteAsync(file, cancellationToken);
-        await versionRepository.UpdateAsync(version, cancellationToken);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
-        await historyStore.AddAsync(
-            version.ContentId,
-            $"Файл версии {Quote(version.Name)} изменён: {Quote(file.OriginalFileName)} → {Quote("удалён")}; " +
-            $"роль: {Quote(file.Role)}; размер: {file.SizeBytes} байт.",
-            currentUser.Author,
-            cancellationToken);
+        await service.DeleteFile(id, fileId, cancellationToken);
         return NoContent();
     }
 
@@ -218,43 +83,7 @@ public sealed class ContentVersionsController(RevEx.Application.Abstractions.Ide
         UpdateContentVersionDto request,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.Name) || request.Date == default)
-        {
-            return ValidationProblem("Name and Date must be provided.");
-        }
-
-        var version = await versionRepository.GetByIdAsync(id, cancellationToken);
-        if (version is null)
-        {
-            return NotFound();
-        }
-
-        var name = request.Name.Trim();
-        var application = request.Application.Trim().ToLowerInvariant();
-        var applicationVersion = request.ApplicationVersion.Trim();
-        var historyDescription = BuildUpdateHistoryDescription(
-            version,
-            name,
-            request.Date,
-            request.Status,
-            application,
-            applicationVersion);
-
-        version.Name = name;
-        version.Date = request.Date;
-        version.Status = request.Status;
-        version.Application = application;
-        version.ApplicationVersion = applicationVersion;
-        await versionRepository.UpdateAsync(version, cancellationToken);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
-        if (historyDescription is not null)
-        {
-            await historyStore.AddAsync(
-                version.ContentId,
-                historyDescription,
-                currentUser.Author,
-                cancellationToken);
-        }
+        await service.Update(id, request, cancellationToken);
         return NoContent();
     }
 
@@ -264,74 +93,7 @@ public sealed class ContentVersionsController(RevEx.Application.Abstractions.Ide
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)
     {
-        var version = await versionRepository.GetByIdAsync(id, cancellationToken);
-        if (version is null)
-        {
-            return NotFound();
-        }
-
-        foreach (var file in version.Files.ToArray())
-        {
-            await fileStorage.DeleteAsync(file.Id, cancellationToken);
-            await fileRepository.DeleteAsync(file, cancellationToken);
-        }
-
-        await versionRepository.DeleteAsync(version, cancellationToken);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
-        await historyStore.AddAsync(
-            version.ContentId,
-            $"Версия удалена. Название: {Quote(version.Name)}; дата: {Quote(FormatDate(version.Date))}; " +
-            $"статус: {Quote(version.Status)}; приложение: {Quote(version.Application)}; " +
-            $"версия приложения: {Quote(version.ApplicationVersion)}; файлов: {version.Files.Count}.",
-            currentUser.Author,
-            cancellationToken);
+        await service.Delete(id, cancellationToken);
         return NoContent();
     }
-
-    private static string? BuildUpdateHistoryDescription(
-        ContentVersion version,
-        string name,
-        DateTimeOffset date,
-        string status,
-        string application,
-        string applicationVersion)
-    {
-        var changes = new List<string>();
-        AddChange(changes, "название", version.Name, name);
-
-        if (version.Date != date)
-            changes.Add($"дата: {Quote(FormatDate(version.Date))} → {Quote(FormatDate(date))}");
-
-        AddChange(changes, "статус", version.Status, status);
-        AddChange(changes, "приложение", version.Application, application);
-        AddChange(changes, "версия приложения", version.ApplicationVersion, applicationVersion);
-
-        return changes.Count == 0
-            ? null
-            : $"Версия {Quote(version.Name)} изменена. {string.Join("; ", changes)}.";
-    }
-
-    private static void AddChange(ICollection<string> changes, string field, string oldValue, string newValue)
-    {
-        if (!string.Equals(oldValue, newValue, StringComparison.Ordinal))
-            changes.Add($"{field}: {Quote(oldValue)} → {Quote(newValue)}");
-    }
-
-    private static string FormatDate(DateTimeOffset value) =>
-        value.ToUniversalTime().ToString("dd.MM.yyyy HH:mm:ss 'UTC'");
-
-    private static string Quote(string value) => $"«{value}»";
-
-    private static ContentVersionDto Map(ContentVersion entity) =>
-        new(
-            entity.Id,
-            entity.ContentId,
-            entity.Files.Select(file => file.Id).ToArray(),
-            entity.Name,
-            entity.Date,
-            entity.Status,
-            entity.Application,
-            entity.ApplicationVersion,
-            entity.CreatedAt,
-            entity.UpdatedAt);
 }

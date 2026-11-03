@@ -8,8 +8,16 @@ public static class ServiceCollectionExtensions
     {
         services.AddControllers(options => options.Filters.Add<RevEx.Api.Filters.ContentOperationExceptionFilter>());
         services.AddHttpContextAccessor();
+        services.AddScoped<RevEx.Application.Catalog.ContentFilesService>();
+        services.AddScoped<RevEx.Application.Subscriptions.ContentSubscriptionService>();
         services.AddScoped<RevEx.Application.Abstractions.Identity.ICurrentUser, RevEx.Api.Authorization.HttpCurrentUser>();
         services.AddScoped<RevEx.Application.Content.ContentService>();
+        services.AddScoped<RevEx.Application.Catalog.CategoriesService>();
+        services.AddScoped<RevEx.Application.Catalog.ContentStatusesService>();
+        services.AddScoped<RevEx.Application.Catalog.TagsService>();
+        services.AddScoped<RevEx.Application.Catalog.TagGroupsService>();
+        services.AddScoped<RevEx.Application.Catalog.ContentVersionsService>();
+        services.AddScoped<RevEx.Application.Catalog.ContentHistoryService>();
         return services;
     }
 

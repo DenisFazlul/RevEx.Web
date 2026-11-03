@@ -23,7 +23,10 @@ async Task Reject(Func<Task> action, string name)
 try
 {
     if (Environment.GetEnvironmentVariable("REVEX_TEST_POSTGRES") is { Length: > 0 } connection)
+    {
         await TrackingChecks.RunAsync(connection);
+        await CommentChecks.RunAsync(connection);
+    }
     Check(await store.GetActiveAsync(ct) == null, "No active release before activation");
     using var archive = Archive("2.4.1");
     await store.UploadAsync(archive, ct);

@@ -21,28 +21,85 @@ builder.WebHost.UseUrls("http://127.0.0.1:0");
 builder.Logging.ClearProviders();
 builder.Services.AddApiControllers().AddControllers().AddApplicationPart(typeof(ContentController).Assembly);
 builder.Services.AddSingleton<IOptions<MongoDbOptions>>(Options.Create(new MongoDbOptions { ConnectionString = "mongodb://localhost:27017", DatabaseName = database }));
-builder.Services.AddSingleton<MongoDbContext>();
-builder.Services.AddScoped(typeof(IRepository<>), typeof(MongoRepository<>));
+builder.Services.AddScoped<MongoDbContext>();
+builder.Services.AddScoped<IContentRepository, MongoContentRepository>();
+builder.Services.AddScoped<IContentFileRepository, MongoContentFileRepository>();
+builder.Services.AddScoped<ITagGroupRepository, MongoTagGroupRepository>();
+builder.Services.AddScoped<IContentStatusRepository, MongoContentStatusRepository>();
+builder.Services.AddScoped<ICategoryRepository, MongoCategoryRepository>();
+builder.Services.AddScoped<ITagRepository, MongoTagRepository>();
+builder.Services.AddScoped<IContentVersionRepository, MongoContentVersionRepository>();
 builder.Services.AddScoped<IContentQueries, MongoContentQueries>();
-builder.Services.AddScoped<IUnitOfWork, MongoUnitOfWork>();
+builder.Services.AddSingleton<RevEx.Application.Subscriptions.IContentSubscriptions, Subscriptions>();
+
 builder.Services.AddSingleton<IFileStorage, InMemoryFileStorage>();
 builder.Services.AddSingleton<IContentHistoryStore, History>();
 builder.Services.AddAuthentication("Checks").AddScheme<AuthenticationSchemeOptions, ChecksAuthentication>("Checks", _ => { });
-builder.Services.AddAuthorization(o => o.AddPolicy("EditContent", p => p.RequireAuthenticatedUser()));
+builder.Services.AddAuthorization(o => { o.AddPolicy("EditContent", p => p.RequireAuthenticatedUser()); o.AddPolicy("AdministerCatalog", p => p.RequireAuthenticatedUser()); });
 await using var app = builder.Build();
 app.UseAuthentication(); app.UseAuthorization(); app.MapControllers();
-var context = app.Services.GetRequiredService<MongoDbContext>();
+
 try
 {
     using (var scope = app.Services.CreateScope())
     {
-        await scope.ServiceProvider.GetRequiredService<IRepository<Category>>().AddAsync(new Category { Name = "Checks" }, default);
-        await scope.ServiceProvider.GetRequiredService<IRepository<ContentStatus>>().AddAsync(new ContentStatus { Name = "Draft" }, default);
+        await scope.ServiceProvider.GetRequiredService<ICategoryRepository>().AddAsync(new Category { Name = "Checks" }, default);
+        await scope.ServiceProvider.GetRequiredService<IContentStatusRepository>().AddAsync(new ContentStatus { Name = "Draft" }, default);
     }
+    using (var scope = app.Services.CreateScope())
+    {
+        var provider = scope.ServiceProvider;
+        var tags = provider.GetRequiredService<ITagRepository>();
+        var versions = provider.GetRequiredService<IContentVersionRepository>();
+        var files = provider.GetRequiredService<IContentFileRepository>();
+        var contents = provider.GetRequiredService<IContentRepository>();
+        var groups = provider.GetRequiredService<ITagGroupRepository>();
+        var loadedGroup = await groups.AddAsync(new TagGroup { Name = "Linked group" }, default);
+        var tag = await tags.AddAsync(new RevEx.Domain.Entities.Tag { Name = "EF tag", TagGroupId = loadedGroup.Id }, default);
+        var item = await contents.AddAsync(new Content { Name = "Cascade", Description = "Checks", CategoryId = 1, TagIds = [tag.Id] }, default);
+        var filtered = await provider.GetRequiredService<IContentQueries>().QueryAsync(new ContentQueryDto { TagIds = [tag.Id] }, default);
+        if (filtered.Count != 1) throw new Exception("Tag filter failed");
+        var contentList = await contents.GetAllAsync(default);
+        if (contentList.Single(x => x.Id == item.Id).Tags.Single().Id != tag.Id)
+            throw new Exception("Content list tag loading failed");
+        if ((await contents.GetByIdAsync(item.Id, default))!.Tags.Single().Id != tag.Id)
+            throw new Exception("Single content tag loading failed");
+        if ((await tags.GetAllAsync(default)).Single(x => x.Id == tag.Id).TagGroup?.Id != loadedGroup.Id)
+            throw new Exception("Tag list group loading failed");
+        if ((await tags.GetByIdAsync(tag.Id, default))!.TagGroup?.Id != loadedGroup.Id)
+            throw new Exception("Single tag group loading failed");
+        await provider.GetRequiredService<RevEx.Application.Catalog.TagsService>().Delete(tag.Id, default);
+        if ((await contents.GetByIdAsync(item.Id, default))!.TagIds.Count != 0) throw new Exception("Tag cleanup failed");
+        var seededVersion = await versions.AddAsync(new ContentVersion { ContentId = item.Id, Name = "v1", Status = "Draft", ApplicationVersion = "2026" }, default);
+        await files.AddAsync(new ContentFile { ContentVersionId = seededVersion.Id, Url = "test", OriginalFileName = "test", Extension = ".rfa", Role = "model" }, default);
+        if ((await versions.GetAllAsync(default)).Single(x => x.Id == seededVersion.Id).Files.Count != 1)
+            throw new Exception("Version list file loading failed");
+        if ((await versions.GetByIdAsync(seededVersion.Id, default))!.Files.Count != 1)
+            throw new Exception("Single version file loading failed");
+        await provider.GetRequiredService<RevEx.Application.Content.ContentService>().Delete(item.Id, default);
+        if ((await versions.GetAllAsync(default)).Count != 0 || (await files.GetAllAsync(default)).Count != 0) throw new Exception("Cascade delete failed");
+    }
+    ((History)app.Services.GetRequiredService<IContentHistoryStore>()).Items.Clear();
     await app.StartAsync();
     using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
     async Task Expect(HttpResponseMessage response, HttpStatusCode status)
     { if (response.StatusCode != status) throw new Exception($"Expected {status}, got {response.StatusCode}: {await response.Content.ReadAsStringAsync()}"); }
+    await Expect(await client.PostAsJsonAsync("/api/categories", new { name = "" }), HttpStatusCode.BadRequest);
+    var categoryResponse = await client.PostAsJsonAsync("/api/categories", new { name = "Extra" });
+    await Expect(categoryResponse, HttpStatusCode.Created);
+    var category = (await categoryResponse.Content.ReadFromJsonAsync<RevEx.Domain.Contracts.Category.CategoryDto>())!;
+    await Expect(await client.PutAsJsonAsync($"/api/categories/{category.Id}", new { name = "Renamed" }), HttpStatusCode.NoContent);
+    await Expect(await client.DeleteAsync($"/api/categories/{category.Id}"), HttpStatusCode.NoContent);
+    await Expect(await client.DeleteAsync("/api/categories/1"), HttpStatusCode.Conflict);
+    var groupResponse = await client.PostAsJsonAsync("/api/tag-groups", new { name = "Group" });
+    await Expect(groupResponse, HttpStatusCode.Created);
+    var group = (await groupResponse.Content.ReadFromJsonAsync<RevEx.Domain.Contracts.Tag.TagGroupDto>())!;
+    var tagResponse = await client.PostAsJsonAsync("/api/tags", new { name = "Tag", tagGroupId = group.Id });
+    await Expect(tagResponse, HttpStatusCode.Created);
+    var tagDto = (await tagResponse.Content.ReadFromJsonAsync<RevEx.Domain.Contracts.Tag.TagDto>())!;
+    await Expect(await client.DeleteAsync($"/api/tag-groups/{group.Id}"), HttpStatusCode.Conflict);
+    await Expect(await client.DeleteAsync($"/api/tags/{tagDto.Id}"), HttpStatusCode.NoContent);
+    await Expect(await client.DeleteAsync($"/api/tag-groups/{group.Id}"), HttpStatusCode.NoContent);
     var first = await client.PostAsJsonAsync("/api/content", new CreateContentDto { Name = "Alpha [test]", Description = "First", CategoryId = 1 });
     await Expect(first, HttpStatusCode.Created);
     var content = (await first.Content.ReadFromJsonAsync<ContentDto>())!;
@@ -58,9 +115,18 @@ try
     var image = new ByteArrayContent([1,2,3]); image.Headers.ContentType = new("image/png"); upload.Add(image, "File", "test.png");
     await Expect(await client.PostAsync($"/api/content/{content.Id}/preview", upload), HttpStatusCode.OK);
     await Expect(await client.DeleteAsync($"/api/content/{content.Id}/preview"), HttpStatusCode.NoContent);
+    var versionResponse = await client.PostAsJsonAsync("/api/content-versions", new { contentId = content.Id, name = "v1", application = "revit", applicationVersion = "2026" });
+    await Expect(versionResponse, HttpStatusCode.Created);
+    var version = (await versionResponse.Content.ReadFromJsonAsync<RevEx.Domain.Contracts.ContentVersion.ContentVersionDto>())!;
+    using var fileUpload = new MultipartFormDataContent();
+    fileUpload.Add(new ByteArrayContent([1,2,3]), "File", "family.rfa");
+    fileUpload.Add(new StringContent("primary"), "Role");
+    await Expect(await client.PostAsync($"/api/content-versions/{version.Id}/file", fileUpload), HttpStatusCode.Created);
+    var fetchedVersion = (await client.GetFromJsonAsync<RevEx.Domain.Contracts.ContentVersion.ContentVersionDto>($"/api/content-versions/{version.Id}"))!;
+    await Expect(await client.GetAsync($"/api/content-files/{fetchedVersion.FileIds.Single()}/content"), HttpStatusCode.OK);
+    await Expect(await client.DeleteAsync($"/api/content-versions/{version.Id}"), HttpStatusCode.NoContent);
     await Expect(await client.DeleteAsync($"/api/content/{content.Id}"), HttpStatusCode.NoContent);
     if (app.Services.GetRequiredService<IContentHistoryStore>() is not History history || history.Items.Any(x => x.Author != "checks")) throw new Exception("History author failed");
     Console.WriteLine("PASS: HTTP create/update/delete/preview, error mapping, current user, real Mongo search and pagination.");
 }
-finally { await app.StopAsync(); await context.Database.Client.DropDatabaseAsync(database); }
-
+finally { await app.StopAsync(); await new MongoDB.Driver.MongoClient("mongodb://localhost:27017").DropDatabaseAsync(database); }

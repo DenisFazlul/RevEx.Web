@@ -1,3 +1,4 @@
+using RevEx.Application.Notifications;
 using RevEx.Application.Subscriptions;
 using System.Net;
 using System.Net.Mail;
@@ -17,6 +18,8 @@ public static class ServiceCollectionExtensions
             .Validate(o => MailAddress.TryCreate(o.FromAddress, out _), "Invalid sender address.");
         services.AddTransient<INotificationService, SmtpNotificationService>();
         services.AddSingleton<IContentSubscriptions, ContentSubscriptions>();
+        services.AddSingleton<INotificationDeliveryStore, PostgresNotificationDeliveryStore>();
+        services.AddSingleton<ContentNotificationService>();
         services.AddSingleton<IContentChangeHandler, ContentChangeHandler>();
         services.AddOptions<ContentChangeConsumerOptions>().Bind(configuration.GetSection("Kafka"))
             .Validate(o => !string.IsNullOrWhiteSpace(o.BootstrapServers)

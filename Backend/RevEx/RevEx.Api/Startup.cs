@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+using RevEx.Infrastructure.Persistence;
 using RevEx.Infrastructure.Notifications;
 using RevEx.Api.Extensions;
 
@@ -14,7 +16,12 @@ builder.Services
 builder.Services.AddNotificationService(builder.Configuration);
 var app = builder.Build();
 
-await app.InitializeContentHistoryAsync();
+await using (var scope = app.Services.CreateAsyncScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<PostgresDbContext>();
+    await db.Database.MigrateAsync();
+}
+
 await app.SeedInitialDataAsync();
 
 app.UseApiSwagger();
