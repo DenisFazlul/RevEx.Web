@@ -3,6 +3,7 @@ using RevEx.Application.Abstractions.Storage;
 using RevEx.Domain.Contracts.ContentVersion;
 using RevEx.Domain.Entities;
 using ContentEntity = RevEx.Domain.Entities.Content;
+using System.Text.Json;
 
 namespace RevEx.Application.Catalog;
 using RevEx.Application.Content;
@@ -19,10 +20,8 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
     private static readonly IReadOnlyDictionary<string, string[]> AllowedExtensionsByRole =
         new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
         {
-            ["primary"] = [".rfa"],
             ["type-catalog"] = [".txt"],
-            ["lookup-table"] = [".csv"],
-            ["attachment"] = [".txt", ".csv", ".pdf"]
+            ["lookup-table"] = [".csv"]
         };
 
     public async Task<IReadOnlyCollection<ContentVersionDto>> GetAll(
@@ -95,17 +94,19 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
         var originalFileName = Path.GetFileName(request.FileName);
         var extension = Path.GetExtension(originalFileName).ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(originalFileName) ||
-            !AllowedExtensionsByRole.TryGetValue(role, out var allowedExtensions) ||
-            !allowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+            (role != "primary" && role != "attachment" &&
+             (!AllowedExtensionsByRole.TryGetValue(role, out var allowedExtensions) ||
+              !allowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))))
         {
             throw new ContentOperationException(ContentFailure.BadRequest, "The file extension is not allowed for the selected file role.");
         }
 
         if (role == "primary" && version.Files.Any(item => item.Role == "primary"))
         {
-            throw new ContentOperationException(ContentFailure.Conflict, "This content version already has a primary Revit file.");
+            throw new ContentOperationException(ContentFailure.Conflict, "This content version already has a primary file.");
         }
 
+        var metadataJson = ValidateMetadata(request.MetadataJson);
         var file = new ContentFile
         {
             Url = "pending",
@@ -113,6 +114,7 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
             Extension = extension,
             SizeBytes = request.Length,
             Role = role,
+            MetadataJson = metadataJson,
             ContentVersionId = version.Id,
             ContentVersion = version
         };
@@ -146,6 +148,34 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
             cancellationToken);
 
         return Map(version);
+    }
+
+    private static string? ValidateMetadata(string? json)
+    {
+        if (json is null)
+        {
+            return null;
+        }
+
+        if (json.Length > 8 * 1024 * 1024)
+        {
+            throw new ContentOperationException(ContentFailure.BadRequest, "File metadata exceeds 8 MiB.");
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                throw new ContentOperationException(ContentFailure.BadRequest, "File metadata must be a JSON object.");
+            }
+
+            return document.RootElement.GetRawText();
+        }
+        catch (JsonException)
+        {
+            throw new ContentOperationException(ContentFailure.BadRequest, "File metadata is not valid JSON.");
+        }
     }
 
     public async Task DeleteFile(

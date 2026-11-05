@@ -121,9 +121,48 @@ try
     using var fileUpload = new MultipartFormDataContent();
     fileUpload.Add(new ByteArrayContent([1,2,3]), "File", "family.rfa");
     fileUpload.Add(new StringContent("primary"), "Role");
+    const string familyMetadata = """{"schema":"revit.test.v2","types":[{"name":"Тип А","parameters":{"width":900,"enabled":true,"optional":null}}],"future":{"items":[1,"two",{"nested":3.5}]}}""";
+    fileUpload.Add(new StringContent(familyMetadata), "MetadataJson");
     await Expect(await client.PostAsync($"/api/content-versions/{version.Id}/file", fileUpload), HttpStatusCode.Created);
     var fetchedVersion = (await client.GetFromJsonAsync<RevEx.Domain.Contracts.ContentVersion.ContentVersionDto>($"/api/content-versions/{version.Id}"))!;
     await Expect(await client.GetAsync($"/api/content-files/{fetchedVersion.FileIds.Single()}/content"), HttpStatusCode.OK);
+    var fileId = fetchedVersion.FileIds.Single();
+    using (var metadataResponse = System.Text.Json.JsonDocument.Parse(await client.GetStringAsync($"/api/content-files/{fileId}")))
+    {
+        var metadata = metadataResponse.RootElement.GetProperty("metadata");
+        if (metadata.GetProperty("types")[0].GetProperty("parameters").GetProperty("width").GetInt32() != 900 ||
+            metadata.GetProperty("future").GetProperty("items")[2].GetProperty("nested").GetDouble() != 3.5)
+        {
+            throw new Exception("Untyped metadata did not survive the HTTP/Mongo roundtrip.");
+        }
+    }
+    var mongo = new MongoDB.Driver.MongoClient("mongodb://localhost:27017").GetDatabase(database);
+    var rawFiles = mongo.GetCollection<MongoDB.Bson.BsonDocument>("contentFiles");
+    var rawFile = await MongoDB.Driver.IAsyncCursorSourceExtensions.FirstOrDefaultAsync(
+        MongoDB.Driver.IMongoCollectionExtensions.Find(rawFiles, MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Filter.Eq("_id", fileId)));
+    if (!rawFile["Metadata"].IsBsonDocument || rawFile.Contains("MetadataJson"))
+    {
+        throw new Exception("Metadata must be stored as a BSON document beside the file, not a string or Revit entity.");
+    }
+
+    var drawingResponse = await client.PostAsJsonAsync("/api/content-versions", new { contentId = content.Id, name = "DWG", application = "autocad", applicationVersion = "R24.3" });
+    await Expect(drawingResponse, HttpStatusCode.Created);
+    var drawingVersion = (await drawingResponse.Content.ReadFromJsonAsync<RevEx.Domain.Contracts.ContentVersion.ContentVersionDto>())!;
+    using var invalidMetadataUpload = new MultipartFormDataContent();
+    invalidMetadataUpload.Add(new ByteArrayContent([4, 5, 6]), "File", "drawing.dwg");
+    invalidMetadataUpload.Add(new StringContent("primary"), "Role");
+    invalidMetadataUpload.Add(new StringContent("[1,2]"), "MetadataJson");
+    await Expect(await client.PostAsync($"/api/content-versions/{drawingVersion.Id}/file", invalidMetadataUpload), HttpStatusCode.BadRequest);
+    var emptyDrawing = (await client.GetFromJsonAsync<RevEx.Domain.Contracts.ContentVersion.ContentVersionDto>($"/api/content-versions/{drawingVersion.Id}"))!;
+    if (emptyDrawing.FileIds.Count != 0)
+    {
+        throw new Exception("Invalid metadata left a file record behind.");
+    }
+    using var drawingUpload = new MultipartFormDataContent();
+    drawingUpload.Add(new ByteArrayContent([4, 5, 6]), "File", "drawing.dwg");
+    drawingUpload.Add(new StringContent("primary"), "Role");
+    drawingUpload.Add(new StringContent("""{"drawing":{"layers":["Walls","Doors"],"units":"mm"}}"""), "MetadataJson");
+    await Expect(await client.PostAsync($"/api/content-versions/{drawingVersion.Id}/file", drawingUpload), HttpStatusCode.Created);
     await Expect(await client.DeleteAsync($"/api/content-versions/{version.Id}"), HttpStatusCode.NoContent);
     await Expect(await client.DeleteAsync($"/api/content/{content.Id}"), HttpStatusCode.NoContent);
     if (app.Services.GetRequiredService<IContentHistoryStore>() is not History history || history.Items.Any(x => x.Author != "checks")) throw new Exception("History author failed");

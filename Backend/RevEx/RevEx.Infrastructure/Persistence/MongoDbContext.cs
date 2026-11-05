@@ -18,7 +18,8 @@ public sealed class MongoDbContext : DbContext
         Configure<Category>(model, "Contents");
         Configure<Content>(model, "Category", "ContentStatus", "PreviewFile", "Versions", "Tags");
         Configure<ContentVersion>(model, "Content", "Files");
-        Configure<ContentFile>(model, "ContentVersion");
+        // Dynamic metadata is persisted as a BSON document by MongoContentFileRepository.
+        Configure<ContentFile>(model, "ContentVersion", "MetadataJson");
         Configure<ContentStatus>(model, "Contents");
         Configure<Tag>(model, "TagGroup", "Contents");
         Configure<TagGroup>(model, "Tags");
@@ -39,6 +40,13 @@ public sealed class MongoDbContext : DbContext
         _ => throw new NotSupportedException(type.Name)
     };
     // Atomic counters are a provider escape hatch: EF cannot express find-and-increment.
+    internal IMongoCollection<TDocument> GetCollection<TDocument>(string name)
+    {
+        return Clients.GetOrAdd(settings.ConnectionString, value => new MongoClient(value))
+            .GetDatabase(settings.DatabaseName)
+            .GetCollection<TDocument>(name);
+    }
+
     public async Task<int> NextIdAsync<T>(CancellationToken token)
     {
         var counters = Clients.GetOrAdd(settings.ConnectionString, value => new MongoClient(value)).GetDatabase(settings.DatabaseName).GetCollection<Repositories.Counter>("counters");

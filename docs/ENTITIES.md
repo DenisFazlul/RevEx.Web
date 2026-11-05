@@ -46,10 +46,16 @@ erDiagram
   сохраняет текущие теги.
 - Названия тегов, групп и состояний — до 100 символов.
 - Версия: название до 200 символов; `Status` — `draft`, `published` или `archived`;
-  `Application` — `revit`, `ApplicationVersion` — год вида `20xx`.
-- Файл версии — от 1 байта до 100 MiB: `primary` допускает `.rfa`,
-  `type-catalog` — `.txt`, `lookup-table` — `.csv`, `attachment` — `.txt`, `.csv`, `.pdf`.
+  `Application` и `ApplicationVersion` — обязательные строки до 100 символов,
+  например `revit` / `2026` или `autocad` / `R24.3`.
+- Файл версии — от 1 байта до 100 MiB: `primary` и `attachment` допускают любые форматы,
+  `type-catalog` — `.txt`, `lookup-table` — `.csv`.
   В версии допускается один основной файл `primary`; повторная загрузка возвращает 409.
+- `contentFiles.Metadata` — необязательный вложенный BSON-документ произвольной структуры.
+  В Domain он представлен JSON-текстом `MetadataJson`, который не маппится средствами EF:
+  специализированный MongoContentFileRepository записывает BSON и загружает метаданные
+  пакетно при чтении списка. HTTP DTO возвращает JSON-объект `metadata`.
+  Схемы Revit, DWG и будущих коннекторов не становятся сущностями общего каталога.
 - Превью — JPEG, PNG, WebP или GIF до 10 MiB.
 
 ## История контента

@@ -46,6 +46,8 @@ public sealed class ContentVersionsController(RevEx.Application.Catalog.ContentV
     }
 
     [HttpPost("{id:int}/file")]
+    [RequestSizeLimit(110 * 1024 * 1024)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 100 * 1024 * 1024, ValueLengthLimit = 8 * 1024 * 1024)]
     [Authorize(Policy = RevExPolicies.EditContent)]
     [Consumes("multipart/form-data")]
     [ProducesResponseType<ContentVersionDto>(StatusCodes.Status201Created)]
@@ -56,7 +58,13 @@ public sealed class ContentVersionsController(RevEx.Application.Catalog.ContentV
         [FromForm] UploadFileRequest request,
         CancellationToken cancellationToken)
     {
-        var result = await service.AddFile(id, new RevEx.Application.Catalog.VersionFileUpload(request.File.FileName, request.File.Length, request.File.OpenReadStream, request.Role), cancellationToken);
+        var upload = new RevEx.Application.Catalog.VersionFileUpload(
+            request.File.FileName,
+            request.File.Length,
+            request.File.OpenReadStream,
+            request.Role,
+            request.MetadataJson);
+        var result = await service.AddFile(id, upload, cancellationToken);
         return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
     }
 

@@ -39,7 +39,12 @@ realm `revex`, audience `revex-api`, роли берутся из claim `roles`.
 на карточке; поиск по имени не учитывает регистр.
 
 Загрузка превью: `POST /api/content/{id}/preview`, поле формы `File`.
-Загрузка файла версии: `POST /api/content-versions/{id}/file`, поля `File` и `Role`.
+Загрузка файла версии: `POST /api/content-versions/{id}/file`, поля `File` и `Role`,
+необязательное поле `MetadataJson` — произвольный JSON-объект до 8 MiB.
+Метаданные сохраняются вложенным BSON-документом `Metadata` в записи `contentFiles`
+и возвращаются объектом `metadata` в `GET /api/content-files` и `GET /api/content-files/{id}`.
+Общая модель файлов не зависит от DTO коннекторов. `primary` и `attachment` допускают
+любой формат файла; ограничения на `.rfa` и год Revit относятся к окну импорта RFA.
 Загрузка релиза: `POST /api/desktop-releases`, поле `File` с ZIP-архивом,
 лимит запроса — 1 GiB. Состав архива описан в [руководстве по релизам](DESKTOP_RELEASES.md).
 
