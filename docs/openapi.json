@@ -1576,26 +1576,6 @@
               }
             }
           },
-          "404": {
-            "description": "Not Found",
-            "content": {
-              "text/plain": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "text/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
           "401": {
             "description": "Требуется аутентификация."
           },
@@ -1630,25 +1610,7 @@
         ],
         "responses": {
           "200": {
-            "description": "OK",
-            "content": {
-              "application/octet-stream": {
-                "schema": {
-                  "type": "string",
-                  "format": "binary"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "content": {
-              "application/octet-stream": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
+            "description": "OK"
           },
           "401": {
             "description": "Требуется аутентификация."
@@ -2769,6 +2731,10 @@
                   "Role": {
                     "maxLength": 32,
                     "type": "string"
+                  },
+                  "MetadataJson": {
+                    "maxLength": 8388608,
+                    "type": "string"
                   }
                 }
               },
@@ -2777,6 +2743,9 @@
                   "style": "form"
                 },
                 "Role": {
+                  "style": "form"
+                },
+                "MetadataJson": {
                   "style": "form"
                 }
               }
@@ -2890,6 +2859,103 @@
         "responses": {
           "204": {
             "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Требуется аутентификация."
+          },
+          "403": {
+            "description": "Недостаточно прав."
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ],
+        "x-authorization-policies": [
+          "EditContent"
+        ]
+      }
+    },
+    "/api/content-versions/{id}/publish-status": {
+      "put": {
+        "tags": [
+          "ContentVersions"
+        ],
+        "operationId": "ContentVersions_UpdatePublishStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePublishStatusDto"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePublishStatusDto"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePublishStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
           },
           "404": {
             "description": "Not Found",
@@ -5137,6 +5203,9 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "metadata": {
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -5219,6 +5288,12 @@
           "status": {
             "type": "string",
             "nullable": true
+          },
+          "publishStatus": {
+            "$ref": "#/components/schemas/PublishStatus"
+          },
+          "platform": {
+            "$ref": "#/components/schemas/Platform"
           },
           "application": {
             "type": "string",
@@ -5335,7 +5410,8 @@
       "CreateContentVersionDto": {
         "required": [
           "application",
-          "applicationVersion"
+          "applicationVersion",
+          "platform"
         ],
         "type": "object",
         "properties": {
@@ -5360,14 +5436,20 @@
             "type": "string",
             "nullable": true
           },
+          "publishStatus": {
+            "$ref": "#/components/schemas/PublishStatus"
+          },
+          "platform": {
+            "$ref": "#/components/schemas/Platform"
+          },
           "application": {
+            "maxLength": 100,
             "minLength": 1,
-            "pattern": "^revit$",
             "type": "string"
           },
           "applicationVersion": {
+            "maxLength": 100,
             "minLength": 1,
-            "pattern": "^20[0-9]{2}$",
             "type": "string"
           }
         },
@@ -5865,6 +5947,15 @@
         },
         "additionalProperties": false
       },
+      "Platform": {
+        "enum": [
+          0,
+          1,
+          2
+        ],
+        "type": "integer",
+        "format": "int32"
+      },
       "ProblemDetails": {
         "type": "object",
         "properties": {
@@ -5891,6 +5982,15 @@
           }
         },
         "additionalProperties": { }
+      },
+      "PublishStatus": {
+        "enum": [
+          0,
+          1,
+          2
+        ],
+        "type": "integer",
+        "format": "int32"
       },
       "RevitPublication": {
         "type": "object",
@@ -6041,7 +6141,8 @@
           "application",
           "applicationVersion",
           "name",
-          "status"
+          "platform",
+          "publishStatus"
         ],
         "type": "object",
         "properties": {
@@ -6055,19 +6156,37 @@
             "format": "date-time"
           },
           "status": {
-            "minLength": 1,
             "pattern": "^(draft|published|archived)$",
-            "type": "string"
+            "type": "string",
+            "nullable": true
+          },
+          "publishStatus": {
+            "$ref": "#/components/schemas/PublishStatus"
+          },
+          "platform": {
+            "$ref": "#/components/schemas/Platform"
           },
           "application": {
+            "maxLength": 100,
             "minLength": 1,
-            "pattern": "^revit$",
             "type": "string"
           },
           "applicationVersion": {
+            "maxLength": 100,
             "minLength": 1,
-            "pattern": "^20[0-9]{2}$",
             "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpdatePublishStatusDto": {
+        "required": [
+          "publishStatus"
+        ],
+        "type": "object",
+        "properties": {
+          "publishStatus": {
+            "$ref": "#/components/schemas/PublishStatus"
           }
         },
         "additionalProperties": false

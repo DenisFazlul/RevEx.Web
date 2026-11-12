@@ -11,7 +11,7 @@
 `NetworkFolder` либо S3, в зависимости от конфигурации. Архивы релизов desktop
 хранятся в каталоге `DesktopReleases:Path`.
 
-Все семь сущностей каталога наследуют `AuditableEntity`: `CreatedAt` и
+Все восемь сущностей каталога наследуют `AuditableEntity`: `CreatedAt` и
 `UpdatedAt` имеют тип `DateTimeOffset`. Их `Id` — целочисленный идентификатор.
 Навигационные свойства C# не сохраняются в MongoDB; связи задаются ID.
 Ограничения API задаются DTO и контроллерами, а не внешними ключами MongoDB.
@@ -25,8 +25,9 @@
 | `TagGroup` / `tagGroups` | `Name: string` | Группа тегов; содержит много `Tag`. |
 | `Tag` / `tags` | `Name: string`, `TagGroupId: int` | Тег принадлежит группе; карточка может иметь несколько тегов. DTO дополнительно возвращает `TagGroupName`. |
 | `Content` / `contents` | `Name: string`, `Description: string`, `CategoryId: int`, `ContentStatusId: int`, `PreviewFileId: int?`, `TagIds: int[]` | Карточка контента: категория, состояние, необязательное превью, теги и версии. |
-| `ContentVersion` / `contentVersions` | `ContentId: int`, `Name: string`, `Date: DateTimeOffset`, `Status: string`, `Application: string`, `ApplicationVersion: string` | Версия одной карточки. DTO дополнительно возвращает `FileIds`. |
+| `ContentVersion` / `contentVersions` | `ContentId: int`, `Name: string`, `Date: DateTimeOffset`, `Platform: enum`, `PublishStatus: enum`, `Status: string`, `Application: string`, `ApplicationVersion: string` | Версия одной карточки. DTO дополнительно возвращает `FileIds`. |
 | `ContentFile` / `contentFiles` | `Url: string`, `OriginalFileName: string`, `Extension: string`, `SizeBytes: long`, `Role: string`, `ContentVersionId: int?` | Метаданные файла. Файл версии связан с `ContentVersion`; превью карточки не имеет `ContentVersionId`. `Url` ведёт к API скачивания. |
+| `ContentFileMetadata` / `contentFileMetadata` | `FileId: int`, `Metadata: BSON document` | Произвольные метаданные файла. Собственный `Id` выделяется независимо от `ContentFile.Id`; уникальный индекс `FileId` допускает не более одного документа метаданных для файла. |
 
 ```mermaid
 erDiagram
@@ -37,6 +38,7 @@ erDiagram
     Content ||--o{ ContentVersion : ContentId
     ContentVersion o|--o{ ContentFile : ContentVersionId
     Content o|--o| ContentFile : PreviewFileId
+    ContentFile ||--o| ContentFileMetadata : FileId
 ```
 
 Ограничения входных данных:
@@ -48,14 +50,32 @@ erDiagram
 - Версия: название до 200 символов; `Status` — `draft`, `published` или `archived`;
   `Application` и `ApplicationVersion` — обязательные строки до 100 символов,
   например `revit` / `2026` или `autocad` / `R24.3`.
+  `Platform` — обязательное перечисление доменного слоя: `Other = 0`, `Revit = 1`, `AutoCad = 2`.
+  `PublishStatus` находится там же и имеет ровно три значения: `Draft = 0` («Черновик»),
+  `Ready = 1` («Готов»), `Withdrawn = 2` («Снят»). Новая версия по умолчанию — `Draft`.
+  API и MongoDB используют числовые значения. Строковый `Status` сохраняется для совместимости
+  и синхронизируется сервером с `PublishStatus`: `draft` / `published` / `archived`.
+  Для Revit и AutoCad значение `Application` определяется платформой. Импорт RFA всегда
+  задаёт `Platform.Revit`, включая чтение через мок-коннектор.
+  `ContentVersionEnumsMigration` при запуске API заполняет отсутствующие enum-поля по старым
+  `Application` и `Status`, сохраняя уже заданные значения. Неизвестные приложения получают `Other`.
 - Файл версии — от 1 байта до 100 MiB: `primary` и `attachment` допускают любые форматы,
   `type-catalog` — `.txt`, `lookup-table` — `.csv`.
   В версии допускается один основной файл `primary`; повторная загрузка возвращает 409.
-- `contentFiles.Metadata` — необязательный вложенный BSON-документ произвольной структуры.
-  В Domain он представлен JSON-текстом `MetadataJson`, который не маппится средствами EF:
-  специализированный MongoContentFileRepository записывает BSON и загружает метаданные
-  пакетно при чтении списка. HTTP DTO возвращает JSON-объект `metadata`.
+- `contentFileMetadata.Metadata` — BSON-документ произвольной структуры, связанный
+  с файлом через `FileId`. Если метаданных нет, отдельный документ не создаётся.
+  В Domain содержимое представлено JSON-текстом `MetadataJson`, который не маппится
+  средствами EF. `MongoContentFileMetadataRepository` записывает BSON;
+  `MongoContentFileRepository` присоединяет метаданные по `FileId`, пакетно для списков.
+  HTTP DTO по-прежнему возвращает JSON-объект `metadata`.
+  При удалении файла удаляется его документ метаданных. При запуске API
+  `ContentFileMetadataMigration` переносит прежнее поле `contentFiles.Metadata`
+  в отдельную коллекцию; повторный запуск не создаёт дубликатов, а старое поле
+  удаляется только после сохранения отдельного документа.
+  Предел MongoDB в 16 MiB остаётся применим к каждому документу метаданных.
   Схемы Revit, DWG и будущих коннекторов не становятся сущностями общего каталога.
+  В актуальных метаданных Revit категория семейства называется `RevitCategory`,
+  чтобы отличать её от категории общего каталога.
 - Превью — JPEG, PNG, WebP или GIF до 10 MiB.
 
 ## История контента

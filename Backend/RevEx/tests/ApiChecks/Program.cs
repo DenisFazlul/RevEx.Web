@@ -4,6 +4,7 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
+using MongoDB.Driver;
 using RevEx.Api.Controllers;
 using RevEx.Api.Extensions;
 using RevEx.Application.Abstractions.Persistence;
@@ -24,6 +25,7 @@ builder.Services.AddSingleton<IOptions<MongoDbOptions>>(Options.Create(new Mongo
 builder.Services.AddScoped<MongoDbContext>();
 builder.Services.AddScoped<IContentRepository, MongoContentRepository>();
 builder.Services.AddScoped<IContentFileRepository, MongoContentFileRepository>();
+builder.Services.AddScoped<IContentFileMetadataRepository, MongoContentFileMetadataRepository>();
 builder.Services.AddScoped<ITagGroupRepository, MongoTagGroupRepository>();
 builder.Services.AddScoped<IContentStatusRepository, MongoContentStatusRepository>();
 builder.Services.AddScoped<ICategoryRepository, MongoCategoryRepository>();
@@ -41,6 +43,8 @@ app.UseAuthentication(); app.UseAuthorization(); app.MapControllers();
 
 try
 {
+    await VersionEnumChecks.RunMigrationAsync(app.Services, database);
+    await FileMetadataChecks.RunAsync(app.Services, database);
     using (var scope = app.Services.CreateScope())
     {
         await scope.ServiceProvider.GetRequiredService<ICategoryRepository>().AddAsync(new Category { Name = "Checks" }, default);
@@ -70,7 +74,15 @@ try
             throw new Exception("Single tag group loading failed");
         await provider.GetRequiredService<RevEx.Application.Catalog.TagsService>().Delete(tag.Id, default);
         if ((await contents.GetByIdAsync(item.Id, default))!.TagIds.Count != 0) throw new Exception("Tag cleanup failed");
-        var seededVersion = await versions.AddAsync(new ContentVersion { ContentId = item.Id, Name = "v1", Status = "Draft", ApplicationVersion = "2026" }, default);
+        var seededVersion = await versions.AddAsync(new ContentVersion
+        {
+            ContentId = item.Id,
+            Name = "v1",
+            Status = "draft",
+            PublishStatus = PublishStatus.Draft,
+            Platform = Platform.Revit,
+            ApplicationVersion = "2026"
+        }, default);
         await files.AddAsync(new ContentFile { ContentVersionId = seededVersion.Id, Url = "test", OriginalFileName = "test", Extension = ".rfa", Role = "model" }, default);
         if ((await versions.GetAllAsync(default)).Single(x => x.Id == seededVersion.Id).Files.Count != 1)
             throw new Exception("Version list file loading failed");
@@ -103,6 +115,7 @@ try
     var first = await client.PostAsJsonAsync("/api/content", new CreateContentDto { Name = "Alpha [test]", Description = "First", CategoryId = 1 });
     await Expect(first, HttpStatusCode.Created);
     var content = (await first.Content.ReadFromJsonAsync<ContentDto>())!;
+    await VersionEnumChecks.RunHttpAsync(client, content.Id);
     await Expect(await client.PostAsJsonAsync("/api/content", new CreateContentDto { Name = "Beta", Description = "Second", CategoryId = 1 }), HttpStatusCode.Created);
     var found = (await client.GetFromJsonAsync<ContentDto[]>("/api/content/query?Name=%5Btest%5D&Limit=1"))!;
     if (found.Length != 1 || found[0].Id != content.Id) throw new Exception("Mongo literal name search failed");
@@ -115,7 +128,7 @@ try
     var image = new ByteArrayContent([1,2,3]); image.Headers.ContentType = new("image/png"); upload.Add(image, "File", "test.png");
     await Expect(await client.PostAsync($"/api/content/{content.Id}/preview", upload), HttpStatusCode.OK);
     await Expect(await client.DeleteAsync($"/api/content/{content.Id}/preview"), HttpStatusCode.NoContent);
-    var versionResponse = await client.PostAsJsonAsync("/api/content-versions", new { contentId = content.Id, name = "v1", application = "revit", applicationVersion = "2026" });
+    var versionResponse = await client.PostAsJsonAsync("/api/content-versions", new { contentId = content.Id, name = "v1", platform = Platform.Revit, application = "revit", applicationVersion = "2026" });
     await Expect(versionResponse, HttpStatusCode.Created);
     var version = (await versionResponse.Content.ReadFromJsonAsync<RevEx.Domain.Contracts.ContentVersion.ContentVersionDto>())!;
     using var fileUpload = new MultipartFormDataContent();
@@ -140,12 +153,20 @@ try
     var rawFiles = mongo.GetCollection<MongoDB.Bson.BsonDocument>("contentFiles");
     var rawFile = await MongoDB.Driver.IAsyncCursorSourceExtensions.FirstOrDefaultAsync(
         MongoDB.Driver.IMongoCollectionExtensions.Find(rawFiles, MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Filter.Eq("_id", fileId)));
-    if (!rawFile["Metadata"].IsBsonDocument || rawFile.Contains("MetadataJson"))
+    if (rawFile.Contains("Metadata") || rawFile.Contains("MetadataJson"))
     {
-        throw new Exception("Metadata must be stored as a BSON document beside the file, not a string or Revit entity.");
+        throw new Exception("File records must not contain metadata after extraction into a separate collection.");
+    }
+    var rawMetadataCollection = mongo.GetCollection<MongoDB.Bson.BsonDocument>("contentFileMetadata");
+    var rawMetadata = await MongoDB.Driver.IAsyncCursorSourceExtensions.FirstOrDefaultAsync(
+        MongoDB.Driver.IMongoCollectionExtensions.Find(rawMetadataCollection,
+            MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Filter.Eq("FileId", fileId)));
+    if (rawMetadata is null || !rawMetadata["Metadata"].IsBsonDocument || rawMetadata.Contains("MetadataJson"))
+    {
+        throw new Exception("Metadata must be a separate BSON document linked by FileId.");
     }
 
-    var drawingResponse = await client.PostAsJsonAsync("/api/content-versions", new { contentId = content.Id, name = "DWG", application = "autocad", applicationVersion = "R24.3" });
+    var drawingResponse = await client.PostAsJsonAsync("/api/content-versions", new { contentId = content.Id, name = "DWG", platform = Platform.AutoCad, application = "autocad", applicationVersion = "R24.3" });
     await Expect(drawingResponse, HttpStatusCode.Created);
     var drawingVersion = (await drawingResponse.Content.ReadFromJsonAsync<RevEx.Domain.Contracts.ContentVersion.ContentVersionDto>())!;
     using var invalidMetadataUpload = new MultipartFormDataContent();
@@ -163,8 +184,39 @@ try
     drawingUpload.Add(new StringContent("primary"), "Role");
     drawingUpload.Add(new StringContent("""{"drawing":{"layers":["Walls","Doors"],"units":"mm"}}"""), "MetadataJson");
     await Expect(await client.PostAsync($"/api/content-versions/{drawingVersion.Id}/file", drawingUpload), HttpStatusCode.Created);
+    using (var scope = app.Services.CreateScope())
+    {
+        var filesBeforeFailure = await rawFiles.CountDocumentsAsync(MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Filter.Empty);
+        var metadataBeforeFailure = await rawMetadataCollection.CountDocumentsAsync(MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Filter.Empty);
+        var failedUpload = new RevEx.Application.Catalog.VersionFileUpload(
+            "failure.rfa", 3, () => throw new IOException("Simulated stream failure."), "attachment", familyMetadata);
+        var failed = false;
+        try
+        {
+            await scope.ServiceProvider.GetRequiredService<RevEx.Application.Catalog.ContentVersionsService>()
+                .AddFile(drawingVersion.Id, failedUpload, default);
+        }
+        catch (IOException)
+        {
+            failed = true;
+        }
+
+        if (!failed
+            || await rawFiles.CountDocumentsAsync(MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Filter.Empty) != filesBeforeFailure
+            || await rawMetadataCollection.CountDocumentsAsync(MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Filter.Empty) != metadataBeforeFailure)
+        {
+            throw new Exception("Failed file upload left a file record or separate metadata document behind.");
+        }
+    }
+
     await Expect(await client.DeleteAsync($"/api/content-versions/{version.Id}"), HttpStatusCode.NoContent);
     await Expect(await client.DeleteAsync($"/api/content/{content.Id}"), HttpStatusCode.NoContent);
+    var remainingMetadata = await rawMetadataCollection.CountDocumentsAsync(
+        MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Filter.Empty);
+    if (remainingMetadata != 0)
+    {
+        throw new Exception("Deleting content or a version left orphan metadata documents.");
+    }
     if (app.Services.GetRequiredService<IContentHistoryStore>() is not History history || history.Items.Any(x => x.Author != "checks")) throw new Exception("History author failed");
     Console.WriteLine("PASS: HTTP create/update/delete/preview, error mapping, current user, real Mongo search and pagination.");
 }

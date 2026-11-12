@@ -84,7 +84,9 @@ public static class InitialDataSeeder
                 Name = name,
                 Date = date,
                 Status = "published",
+                PublishStatus = PublishStatus.Ready,
                 Application = "revit",
+                Platform = Platform.Revit,
                 ApplicationVersion = "2011"
             }, cancellationToken);
         }

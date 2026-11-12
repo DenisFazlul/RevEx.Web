@@ -43,6 +43,8 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
         CreateContentVersionDto request,
         CancellationToken cancellationToken)
     {
+        var platform = ValidatePlatform(request.Platform);
+        var publishStatus = ValidatePublishStatus(request.PublishStatus);
         var content = await contentRepository.GetByIdAsync(request.ContentId, cancellationToken);
         if (content is null)
         {
@@ -55,8 +57,10 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
             Content = content,
             Name = string.IsNullOrWhiteSpace(request.Name) ? "Новая версия" : request.Name.Trim(),
             Date = request.Date ?? DateTimeOffset.UtcNow,
-            Status = request.Status ?? "draft",
-            Application = request.Application.Trim().ToLowerInvariant(),
+            PublishStatus = publishStatus,
+            Status = GetLegacyStatus(publishStatus),
+            Platform = platform,
+            Application = GetApplication(platform, request.Application),
             ApplicationVersion = request.ApplicationVersion.Trim()
         };
 
@@ -65,7 +69,7 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
         await historyStore.AddAsync(
             entity.ContentId,
             $"Версия создана. Название: {Quote(entity.Name)}; дата: {Quote(FormatDate(entity.Date))}; " +
-            $"статус: {Quote(entity.Status)}; приложение: {Quote(entity.Application)}; " +
+            $"статус: {Quote(entity.PublishStatus.ToString())}; платформа: {Quote(entity.Platform.ToString())}; приложение: {Quote(entity.Application)}; " +
             $"версия приложения: {Quote(entity.ApplicationVersion)}.",
             currentUser.Author,
             cancellationToken);
@@ -214,6 +218,8 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
         UpdateContentVersionDto request,
         CancellationToken cancellationToken)
     {
+        var platform = ValidatePlatform(request.Platform);
+        var publishStatus = ValidatePublishStatus(request.PublishStatus);
         if (string.IsNullOrWhiteSpace(request.Name) || request.Date == default)
         {
             throw new ContentOperationException(ContentFailure.Validation, "Name and Date must be provided.");
@@ -226,19 +232,22 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
         }
 
         var name = request.Name.Trim();
-        var application = request.Application.Trim().ToLowerInvariant();
+        var application = GetApplication(platform, request.Application);
         var applicationVersion = request.ApplicationVersion.Trim();
         var historyDescription = BuildUpdateHistoryDescription(
             version,
             name,
             request.Date,
-            request.Status,
+            publishStatus,
+            platform,
             application,
             applicationVersion);
 
         version.Name = name;
         version.Date = request.Date;
-        version.Status = request.Status;
+        version.PublishStatus = publishStatus;
+        version.Status = GetLegacyStatus(publishStatus);
+        version.Platform = platform;
         version.Application = application;
         version.ApplicationVersion = applicationVersion;
         await versionRepository.UpdateAsync(version, cancellationToken);
@@ -273,7 +282,7 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
         await historyStore.AddAsync(
             version.ContentId,
             $"Версия удалена. Название: {Quote(version.Name)}; дата: {Quote(FormatDate(version.Date))}; " +
-            $"статус: {Quote(version.Status)}; приложение: {Quote(version.Application)}; " +
+            $"статус: {Quote(version.Status)}; платформа: {Quote(version.Platform.ToString())}; приложение: {Quote(version.Application)}; " +
             $"версия приложения: {Quote(version.ApplicationVersion)}; файлов: {version.Files.Count}.",
             currentUser.Author,
             cancellationToken);
@@ -284,7 +293,8 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
         ContentVersion version,
         string name,
         DateTimeOffset date,
-        string status,
+        PublishStatus publishStatus,
+        Platform platform,
         string application,
         string applicationVersion)
     {
@@ -294,7 +304,8 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
         if (version.Date != date)
             changes.Add($"дата: {Quote(FormatDate(version.Date))} → {Quote(FormatDate(date))}");
 
-        AddChange(changes, "статус", version.Status, status);
+        AddChange(changes, "статус публикации", version.PublishStatus.ToString(), publishStatus.ToString());
+        AddChange(changes, "платформа", version.Platform.ToString(), platform.ToString());
         AddChange(changes, "приложение", version.Application, application);
         AddChange(changes, "версия приложения", version.ApplicationVersion, applicationVersion);
 
@@ -314,6 +325,72 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
 
     private static string Quote(string value) => $"«{value}»";
 
+    private static Platform ValidatePlatform(Platform? platform)
+    {
+        if (platform is null || !Enum.IsDefined(typeof(Platform), platform.Value))
+        {
+            throw new ContentOperationException(ContentFailure.Validation, "Укажите допустимую платформу версии контента.");
+        }
+
+        return platform.Value;
+    }
+
+    public async Task UpdatePublishStatus(
+        int id, UpdatePublishStatusDto request, CancellationToken cancellationToken)
+    {
+        var status = ValidatePublishStatus(request.PublishStatus);
+        var version = await versionRepository.GetByIdAsync(id, cancellationToken);
+        if (version is null)
+        {
+            throw new ContentOperationException(ContentFailure.NotFound);
+        }
+
+        if (version.PublishStatus == status)
+        {
+            return;
+        }
+
+        var previousStatus = version.PublishStatus;
+        version.PublishStatus = status;
+        version.Status = GetLegacyStatus(status);
+        await versionRepository.UpdateAsync(version, cancellationToken);
+        await historyStore.AddAsync(
+            version.ContentId,
+            $"Статус публикации версии {Quote(version.Name)} изменён: {Quote(previousStatus.ToString())} → {Quote(status.ToString())}.",
+            currentUser.Author,
+            cancellationToken);
+    }
+
+    private static PublishStatus ValidatePublishStatus(PublishStatus? status)
+    {
+        if (status is null || !Enum.IsDefined(typeof(PublishStatus), status.Value))
+        {
+            throw new ContentOperationException(ContentFailure.Validation, "Укажите допустимый статус публикации версии.");
+        }
+
+        return status.Value;
+    }
+
+    private static string GetLegacyStatus(PublishStatus status)
+    {
+        return status switch
+        {
+            PublishStatus.Ready => "published",
+            PublishStatus.Withdrawn => "archived",
+            _ => "draft"
+        };
+    }
+
+    private static string GetApplication(Platform platform, string application)
+    {
+        return platform switch
+        {
+            Platform.Revit => "revit",
+            Platform.AutoCad => "autocad",
+            _ => application.Trim().ToLowerInvariant()
+        };
+    }
+
     private static ContentVersionDto Map(ContentVersion entity) =>
         new(
             entity.Id,
@@ -322,6 +399,8 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
             entity.Name,
             entity.Date,
             entity.Status,
+            entity.PublishStatus,
+            entity.Platform,
             entity.Application,
             entity.ApplicationVersion,
             entity.CreatedAt,

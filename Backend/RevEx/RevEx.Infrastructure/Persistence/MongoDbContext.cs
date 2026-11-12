@@ -18,8 +18,11 @@ public sealed class MongoDbContext : DbContext
         Configure<Category>(model, "Contents");
         Configure<Content>(model, "Category", "ContentStatus", "PreviewFile", "Versions", "Tags");
         Configure<ContentVersion>(model, "Content", "Files");
-        // Dynamic metadata is persisted as a BSON document by MongoContentFileRepository.
+        model.Entity<ContentVersion>().Property(version => version.Platform).HasConversion<int>();
+        model.Entity<ContentVersion>().Property(version => version.PublishStatus).HasConversion<int>();
+        // Dynamic metadata is persisted in contentFileMetadata, linked by FileId.
         Configure<ContentFile>(model, "ContentVersion", "MetadataJson");
+        Configure<ContentFileMetadata>(model, "MetadataJson");
         Configure<ContentStatus>(model, "Contents");
         Configure<Tag>(model, "TagGroup", "Contents");
         Configure<TagGroup>(model, "Tags");
@@ -36,6 +39,7 @@ public sealed class MongoDbContext : DbContext
     {
         nameof(Category) => "categories", nameof(Content) => "contents",
         nameof(ContentVersion) => "contentVersions", nameof(ContentFile) => "contentFiles",
+        nameof(ContentFileMetadata) => "contentFileMetadata",
         nameof(ContentStatus) => "contentStatuses", nameof(Tag) => "tags", nameof(TagGroup) => "tagGroups",
         _ => throw new NotSupportedException(type.Name)
     };

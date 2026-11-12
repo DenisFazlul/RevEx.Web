@@ -18,6 +18,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IRevitReleaseStore, FileRevitReleaseStore>();
         services.AddScoped<IContentRepository, MongoContentRepository>();
         services.AddScoped<IContentFileRepository, MongoContentFileRepository>();
+        services.AddScoped<IContentFileMetadataRepository, MongoContentFileMetadataRepository>();
         services.AddScoped<ITagGroupRepository, MongoTagGroupRepository>();
         services.AddScoped<IContentStatusRepository, MongoContentStatusRepository>();
         services.AddScoped<ICategoryRepository, MongoCategoryRepository>();

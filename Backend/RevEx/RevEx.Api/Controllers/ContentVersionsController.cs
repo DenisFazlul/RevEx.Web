@@ -95,6 +95,18 @@ public sealed class ContentVersionsController(RevEx.Application.Catalog.ContentV
         return NoContent();
     }
 
+    [HttpPut("{id:int}/publish-status")]
+    [Authorize(Policy = RevExPolicies.EditContent)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UpdatePublishStatus(
+        int id, UpdatePublishStatusDto request, CancellationToken cancellationToken)
+    {
+        await service.UpdatePublishStatus(id, request, cancellationToken);
+        return NoContent();
+    }
+
     [HttpDelete("{id:int}")]
     [Authorize(Policy = RevExPolicies.EditContent)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
