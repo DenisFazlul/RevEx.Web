@@ -12,6 +12,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../../../RevEx.Domain/src/RevEx.Contracts/RevEx.Contracts.csproj" Condition="'$(UseRevExDomainPackage)' != 'true'" />
-    <PackageReference Include="RevEx.Contracts" Version="1.2.0" Condition="'$(UseRevExDomainPackage)' == 'true'" />
+    <PackageReference Include="RevEx.Contracts" Version="2.0.0" Condition="'$(UseRevExDomainPackage)' == 'true'" />
   </ItemGroup>
 </Project>
