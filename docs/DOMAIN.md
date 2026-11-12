@@ -6,7 +6,7 @@
 Исходники: src/RevEx.Domain. Поддерживаются .NET Framework 4.7 и современный .NET.
 
 Локальная сборка использует ProjectReference. Для сборки с пакетом используйте
--p:UseRevExDomainPackage=true и предварительно доступный пакет RevEx.Domain 1.0.0.
+-p:UseRevExDomainPackage=true и предварительно доступные пакеты RevEx.Domain 1.3.0 и RevEx.Contracts 2.2.0.
 Правила структуры, упаковка и проверки описаны в README репозитория Domain.
 
 Пространства имён DTO: RevEx.Domain.Contracts.<предметная область>.
