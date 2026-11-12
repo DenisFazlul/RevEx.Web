@@ -11,6 +11,7 @@ sealed class ContentVersionRepository : IContentVersionRepository
     public List<ContentVersion> Items { get; } = [];
     public Task<IReadOnlyCollection<ContentVersion>> GetAllAsync(CancellationToken token) => Task.FromResult<IReadOnlyCollection<ContentVersion>>(Items);
     public Task<ContentVersion?> GetByIdAsync(int id, CancellationToken token) => Task.FromResult(Items.FirstOrDefault(x => x.Id == id));
+    public Task<ContentVersion?> GetByVidAsync(Guid vid, CancellationToken token) => Task.FromResult(Items.FirstOrDefault(x => x.Vid == vid));
     public Task<ContentVersion> AddAsync(ContentVersion entity, CancellationToken token) { entity.Id = Items.Count + 1; Items.Add(entity); return Task.FromResult(entity); }
     public Task UpdateAsync(ContentVersion entity, CancellationToken token) => Task.CompletedTask;
     public Task DeleteAsync(ContentVersion entity, CancellationToken token) { Items.Remove(entity); return Task.CompletedTask; }

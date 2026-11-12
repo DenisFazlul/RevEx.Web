@@ -7,6 +7,9 @@ namespace RevEx.Infrastructure.Data;
 
 public static class InitialDataSeeder
 {
+    private static readonly Guid WelcomeCid = Guid.Parse("019a7b4c-0000-7000-8000-000000000001");
+    private static readonly Guid DoorCid = Guid.Parse("019a7b4c-0000-7000-8000-000000000002");
+
     public static async Task SeedAsync(
         ICategoryRepository categories,
         IContentStatusRepository statuses,
@@ -32,6 +35,7 @@ public static class InitialDataSeeder
         {
             await contents.AddAsync(new ContentEntity
             {
+                Cid = WelcomeCid,
                 Name = "Добро пожаловать в RevEx",
                 Description = "Стартовый контент, созданный автоматически при запуске приложения.",
                 CategoryId = category.Id,
@@ -47,6 +51,7 @@ public static class InitialDataSeeder
         {
             door = await contents.AddAsync(new ContentEntity
             {
+                Cid = DoorCid,
                 Name = doorName,
                 Description = "Демонстрационное семейство одностворчатой двери с большим остеклением и вертикальной нажимной пластиной.",
                 CategoryId = category.Id,

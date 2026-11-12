@@ -1,14 +1,14 @@
 export type Category = { id: number; name: string }
 export type TagGroup = { id: number; name: string }
 export type Tag = { id: number; name: string; tagGroupId: number; tagGroupName: string }
-export type Content = { id: number; name: string; description: string; categoryId: number; previewFileId: number | null; tagIds: number[] }
+export type Content = { id: number; cid: string; name: string; description: string; categoryId: number; previewFileId: number | null; tagIds: number[] }
 export type ContentInput = Pick<Content, 'name' | 'description' | 'categoryId'> & { tagIds?: number[] }
 export type VersionStatus = 'draft' | 'published' | 'archived'
 export const Platform = { Other: 0, Revit: 1, AutoCad: 2 } as const
 export type Platform = typeof Platform[keyof typeof Platform]
 export const PublishStatus = { Draft: 0, Ready: 1, Withdrawn: 2 } as const
 export type PublishStatus = typeof PublishStatus[keyof typeof PublishStatus]
-export type ContentVersion = { id: number; contentId: number; fileIds: number[]; name: string; date: string; status: VersionStatus; platform: Platform; publishStatus: PublishStatus; application: string; applicationVersion: string }
+export type ContentVersion = { id: number; vid: string | null; contentId: number; fileIds: number[]; name: string; date: string; status: VersionStatus; platform: Platform; publishStatus: PublishStatus; application: string; applicationVersion: string }
 export type ContentVersionInput = Pick<ContentVersion, 'name' | 'date' | 'platform' | 'publishStatus' | 'application' | 'applicationVersion'> & { status?: VersionStatus }
 export type ContentHistoryEvent = { id: number; contentId: number; occurredAt: string; description: string; author: string }
 

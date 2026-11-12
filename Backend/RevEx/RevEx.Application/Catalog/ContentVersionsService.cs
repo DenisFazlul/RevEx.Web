@@ -2,6 +2,7 @@ using RevEx.Application.Abstractions.Persistence;
 using RevEx.Application.Abstractions.Storage;
 using RevEx.Domain.Contracts.ContentVersion;
 using RevEx.Domain.Entities;
+using RevEx.Domain.Identifiers;
 using ContentEntity = RevEx.Domain.Entities.Content;
 using System.Text.Json;
 
@@ -43,6 +44,14 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
         CreateContentVersionDto request,
         CancellationToken cancellationToken)
     {
+        if (request.Vid is Guid vid)
+        {
+            if (!Uuid7.IsValid(vid))
+            {
+                throw new ContentOperationException(ContentFailure.Validation, "VID must be a non-empty UUID v7.");
+            }
+        }
+
         var platform = ValidatePlatform(request.Platform);
         var publishStatus = ValidatePublishStatus(request.PublishStatus);
         var content = await contentRepository.GetByIdAsync(request.ContentId, cancellationToken);
@@ -51,8 +60,39 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
             throw new ContentOperationException(ContentFailure.NotFound, $"Content with id {request.ContentId} was not found.");
         }
 
+        if (request.Vid.HasValue)
+        {
+            if (!request.Cid.HasValue || !Uuid7.IsValid(request.Cid.Value))
+            {
+                throw new ContentOperationException(
+                    ContentFailure.Validation,
+                    "CID must be a non-empty UUID v7 when VID is supplied.");
+            }
+
+            if (request.Cid.Value != content.Cid)
+            {
+                throw new ContentOperationException(
+                    ContentFailure.Conflict,
+                    $"CID {request.Cid.Value:D} does not match content {content.Id}.");
+            }
+
+            var existing = await versionRepository.GetByVidAsync(request.Vid.Value, cancellationToken);
+            if (existing is not null)
+            {
+                if (existing.ContentId == request.ContentId)
+                {
+                    return Map(existing);
+                }
+
+                throw new ContentOperationException(
+                    ContentFailure.Conflict,
+                    $"Version with VID {request.Vid.Value:D} already exists for another content item.");
+            }
+        }
+
         var entity = new ContentVersion
         {
+            Vid = request.Vid,
             ContentId = content.Id,
             Content = content,
             Name = string.IsNullOrWhiteSpace(request.Name) ? "Новая версия" : request.Name.Trim(),
@@ -111,6 +151,22 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
         }
 
         var metadataJson = ValidateMetadata(request.MetadataJson);
+        if (role == "primary" && version.Vid is Guid vid)
+        {
+            var content = await contentRepository.GetByIdAsync(version.ContentId, cancellationToken);
+            if (content is null || extension != ".rfa" || metadataJson is null)
+            {
+                throw new ContentOperationException(ContentFailure.Validation, "A version with VID requires an RFA with CID and VID metadata.");
+            }
+
+            using var metadata = JsonDocument.Parse(metadataJson);
+            if (!MatchesIdentifier(metadata.RootElement, "CID", content.Cid) ||
+                !MatchesIdentifier(metadata.RootElement, "VID", vid))
+            {
+                throw new ContentOperationException(ContentFailure.Conflict, "RFA metadata CID or VID does not match the catalog.");
+            }
+        }
+
         var file = new ContentFile
         {
             Url = "pending",
@@ -152,6 +208,30 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
             cancellationToken);
 
         return Map(version);
+    }
+
+    private static bool MatchesIdentifier(JsonElement metadata, string name, Guid expected)
+    {
+        foreach (var property in metadata.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase) ||
+                property.Value.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            foreach (var field in property.Value.EnumerateObject())
+            {
+                if (string.Equals(field.Name, "Value", StringComparison.OrdinalIgnoreCase) &&
+                    field.Value.ValueKind == JsonValueKind.String &&
+                    field.Value.TryGetGuid(out var identifier))
+                {
+                    return identifier == expected;
+                }
+            }
+        }
+
+        return false;
     }
 
     private static string? ValidateMetadata(string? json)
@@ -394,6 +474,7 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
     private static ContentVersionDto Map(ContentVersion entity) =>
         new(
             entity.Id,
+            entity.Vid,
             entity.ContentId,
             entity.Files.Select(file => file.Id).ToArray(),
             entity.Name,

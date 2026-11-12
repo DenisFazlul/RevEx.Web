@@ -2,6 +2,7 @@ using RevEx.Application.Abstractions.Persistence;
 using RevEx.Application.Abstractions.Storage;
 using RevEx.Domain.Contracts.Content;
 using RevEx.Domain.Entities;
+using RevEx.Domain.Identifiers;
 using ContentEntity = RevEx.Domain.Entities.Content;
 
 namespace RevEx.Application.Content;
@@ -42,6 +43,17 @@ public sealed class ContentService(
         CreateContentDto request,
         CancellationToken cancellationToken)
     {
+        var cid = request.Cid ?? Uuid7.Create();
+        if (!Uuid7.IsValid(cid))
+        {
+            throw new ContentOperationException(ContentFailure.Validation, "CID must be a non-empty UUID v7.");
+        }
+
+        if (await repository.GetByCidAsync(cid, cancellationToken) is not null)
+        {
+            throw new ContentOperationException(ContentFailure.Conflict, $"Content with CID {request.Cid:D} already exists.");
+        }
+
         if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Description))
         {
             throw new ContentOperationException(ContentFailure.Validation, "Name and Description must not be empty.");
@@ -67,6 +79,7 @@ public sealed class ContentService(
 
         var entity = new ContentEntity
         {
+            Cid = cid,
             Name = request.Name.Trim(),
             Description = request.Description.Trim(),
             CategoryId = category.Id,
@@ -414,6 +427,7 @@ public sealed class ContentService(
     private static ContentDto Map(ContentEntity entity) =>
         new(
             entity.Id,
+            entity.Cid,
             entity.Name,
             entity.Description,
             entity.CategoryId,

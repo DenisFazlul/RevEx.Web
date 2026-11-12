@@ -12,6 +12,7 @@ using RevEx.Application.Abstractions.Storage;
 using RevEx.Domain.Contracts.Content;
 using RevEx.Domain.Contracts.ContentHistory;
 using RevEx.Domain.Entities;
+using RevEx.Domain.Identifiers;
 using RevEx.Infrastructure.Persistence;
 using RevEx.Infrastructure.Repositories;
 using RevEx.Infrastructure.Storage;
@@ -60,7 +61,7 @@ try
         var groups = provider.GetRequiredService<ITagGroupRepository>();
         var loadedGroup = await groups.AddAsync(new TagGroup { Name = "Linked group" }, default);
         var tag = await tags.AddAsync(new RevEx.Domain.Entities.Tag { Name = "EF tag", TagGroupId = loadedGroup.Id }, default);
-        var item = await contents.AddAsync(new Content { Name = "Cascade", Description = "Checks", CategoryId = 1, TagIds = [tag.Id] }, default);
+        var item = await contents.AddAsync(new Content { Cid = Uuid7.Create(), Name = "Cascade", Description = "Checks", CategoryId = 1, TagIds = [tag.Id] }, default);
         var filtered = await provider.GetRequiredService<IContentQueries>().QueryAsync(new ContentQueryDto { TagIds = [tag.Id] }, default);
         if (filtered.Count != 1) throw new Exception("Tag filter failed");
         var contentList = await contents.GetAllAsync(default);
@@ -112,11 +113,110 @@ try
     await Expect(await client.DeleteAsync($"/api/tag-groups/{group.Id}"), HttpStatusCode.Conflict);
     await Expect(await client.DeleteAsync($"/api/tags/{tagDto.Id}"), HttpStatusCode.NoContent);
     await Expect(await client.DeleteAsync($"/api/tag-groups/{group.Id}"), HttpStatusCode.NoContent);
-    var first = await client.PostAsJsonAsync("/api/content", new CreateContentDto { Name = "Alpha [test]", Description = "First", CategoryId = 1 });
+    var first = await client.PostAsJsonAsync("/api/content", new CreateContentDto { Cid = Uuid7.Create(), Name = "Alpha [test]", Description = "First", CategoryId = 1 });
     await Expect(first, HttpStatusCode.Created);
     var content = (await first.Content.ReadFromJsonAsync<ContentDto>())!;
+    await Expect(
+        await client.PostAsJsonAsync(
+            "/api/content",
+            new CreateContentDto
+            {
+                Cid = Guid.Empty,
+                Name = "Invalid CID",
+                Description = "Invalid",
+                CategoryId = 1
+            }),
+        HttpStatusCode.BadRequest);
+    await Expect(
+        await client.PostAsJsonAsync(
+            "/api/content",
+            new CreateContentDto
+            {
+                Cid = content.Cid,
+                Name = "Duplicate CID",
+                Description = "Invalid",
+                CategoryId = 1
+            }),
+        HttpStatusCode.Conflict);
+    var foundByCid = await client.GetFromJsonAsync<ContentDto[]>(
+        "/api/content/query?Cid=" + content.Cid.ToString("D"));
+    if (foundByCid is null || foundByCid.Length != 1 || foundByCid[0].Id != content.Id)
+    {
+        throw new Exception("Exact CID lookup failed.");
+    }
+
+    var uuidResponse = await client.PostAsync("/api/identifiers/uuid-v7", null);
+    await Expect(uuidResponse, HttpStatusCode.OK);
+    var identifiedVid = await uuidResponse.Content.ReadFromJsonAsync<Guid>();
+    if (!Uuid7.IsValid(identifiedVid))
+    {
+        throw new Exception("The server did not return a UUID v7.");
+    }
+    var identifiedVersionRequest = new RevEx.Domain.Contracts.ContentVersion.CreateContentVersionDto
+    {
+        ContentId = content.Id,
+        Vid = identifiedVid,
+        Platform = Platform.Revit,
+        ApplicationVersion = "2026"
+    };
+    await Expect(
+        await client.PostAsJsonAsync("/api/content-versions", identifiedVersionRequest),
+        HttpStatusCode.BadRequest);
+    identifiedVersionRequest = new RevEx.Domain.Contracts.ContentVersion.CreateContentVersionDto
+    {
+        ContentId = content.Id,
+        Cid = Uuid7.Create(),
+        Vid = identifiedVid,
+        Platform = Platform.Revit,
+        ApplicationVersion = "2026"
+    };
+    await Expect(
+        await client.PostAsJsonAsync("/api/content-versions", identifiedVersionRequest),
+        HttpStatusCode.Conflict);
+    identifiedVersionRequest = new RevEx.Domain.Contracts.ContentVersion.CreateContentVersionDto
+    {
+        ContentId = content.Id,
+        Cid = content.Cid,
+        Vid = identifiedVid,
+        Platform = Platform.Revit,
+        ApplicationVersion = "2026"
+    };
+    var identifiedVersionResponse = await client.PostAsJsonAsync(
+        "/api/content-versions",
+        identifiedVersionRequest);
+    await Expect(identifiedVersionResponse, HttpStatusCode.Created);
+    var identifiedVersion = await identifiedVersionResponse.Content.ReadFromJsonAsync<RevEx.Domain.Contracts.ContentVersion.ContentVersionDto>();
+    var identifiedVersionRetry = await client.PostAsJsonAsync(
+        "/api/content-versions",
+        identifiedVersionRequest);
+    await Expect(identifiedVersionRetry, HttpStatusCode.Created);
+    var retriedIdentifiedVersion = await identifiedVersionRetry.Content.ReadFromJsonAsync<RevEx.Domain.Contracts.ContentVersion.ContentVersionDto>();
+    if (identifiedVersion is null ||
+        retriedIdentifiedVersion is null ||
+        identifiedVersion.Id != retriedIdentifiedVersion.Id)
+    {
+        throw new Exception("VID retry created a duplicate version.");
+    }
+
     await VersionEnumChecks.RunHttpAsync(client, content.Id);
-    await Expect(await client.PostAsJsonAsync("/api/content", new CreateContentDto { Name = "Beta", Description = "Second", CategoryId = 1 }), HttpStatusCode.Created);
+    using (var missingIdentifiers = new MultipartFormDataContent())
+    {
+        missingIdentifiers.Add(new ByteArrayContent([1, 2, 3]), "File", "family.rfa");
+        missingIdentifiers.Add(new StringContent("primary"), "Role");
+        var fileRoute = $"/api/content-versions/{identifiedVersion.Id}/file";
+        await Expect(await client.PostAsync(fileRoute, missingIdentifiers), HttpStatusCode.BadRequest);
+        var identifiers = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            CID = new { Value = content.Cid },
+            VID = new { Value = identifiedVid }
+        });
+        using var preparedFile = new MultipartFormDataContent();
+        preparedFile.Add(new ByteArrayContent([1, 2, 3]), "File", "family.rfa");
+        preparedFile.Add(new StringContent("primary"), "Role");
+        preparedFile.Add(new StringContent(identifiers), "MetadataJson");
+        await Expect(await client.PostAsync(fileRoute, preparedFile), HttpStatusCode.Created);
+    }
+    await Expect(await client.PostAsJsonAsync("/api/content", new CreateContentDto { Cid = Uuid7.Create(), Name = "Beta", Description = "Second", CategoryId = 1 }), HttpStatusCode.Created);
     var found = (await client.GetFromJsonAsync<ContentDto[]>("/api/content/query?Name=%5Btest%5D&Limit=1"))!;
     if (found.Length != 1 || found[0].Id != content.Id) throw new Exception("Mongo literal name search failed");
     var page = (await client.GetFromJsonAsync<ContentDto[]>("/api/content/query?Offset=1&Limit=1&CategoryIds=1"))!;
