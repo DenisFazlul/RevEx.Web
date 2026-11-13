@@ -8,7 +8,7 @@ using RevEx.Domain.Contracts.ContentVersion;
 namespace RevEx.Api.Controllers;
 
 [ApiController]
-[Route("api/rfa-imports")]
+[Route("api/imports/rfa")]
 public sealed class RfaImportsController(RfaImportsService service) : ControllerBase
 {
     [HttpPost]
