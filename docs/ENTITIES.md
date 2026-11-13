@@ -6,19 +6,17 @@
 
 ## Хранение и общие поля
 
-Каталог и метаданные файлов хранятся в MongoDB. История контента и аудит
-обновлений desktop — в PostgreSQL. Содержимое файлов хранится отдельно:
+Все сущности хранятся в PostgreSQL через EF Core. Содержимое файлов хранится отдельно:
 `NetworkFolder` либо S3, в зависимости от конфигурации. Архивы релизов desktop
 хранятся в каталоге `DesktopReleases:Path`.
 
 Все восемь сущностей каталога наследуют `AuditableEntity`: `CreatedAt` и
 `UpdatedAt` имеют тип `DateTimeOffset`. Их `Id` — целочисленный идентификатор.
-Навигационные свойства C# не сохраняются в MongoDB; связи задаются ID.
-Ограничения API задаются DTO и контроллерами, а не внешними ключами MongoDB.
+Связи обеспечиваются внешними ключами PostgreSQL и таблицей many-to-many для тегов.
 
 ## Каталог
 
-| Сущность / коллекция MongoDB | Поля, кроме Id и общих дат | Назначение и связи |
+| Сущность / таблица PostgreSQL | Поля, кроме Id и общих дат | Назначение и связи |
 | --- | --- | --- |
 | `Category` / `categories` | `Name: string` | Категория каталога; одна категория содержит много карточек. |
 | `ContentStatus` / `contentStatuses` | `Name: string` | Справочник состояний карточки. Не совпадает со строковым статусом версии. |
@@ -27,7 +25,7 @@
 | `Content` / `contents` | `Name: string`, `Description: string`, `CategoryId: int`, `ContentStatusId: int`, `PreviewFileId: int?`, `TagIds: int[]` | Карточка контента: категория, состояние, необязательное превью, теги и версии. |
 | `ContentVersion` / `contentVersions` | `ContentId: int`, `Name: string`, `Date: DateTimeOffset`, `Platform: enum`, `PublishStatus: enum`, `Status: string`, `Application: string`, `ApplicationVersion: string` | Версия одной карточки. DTO дополнительно возвращает `FileIds`. |
 | `ContentFile` / `contentFiles` | `Url: string`, `OriginalFileName: string`, `Extension: string`, `SizeBytes: long`, `Role: string`, `ContentVersionId: int?` | Метаданные файла. Файл версии связан с `ContentVersion`; превью карточки не имеет `ContentVersionId`. `Url` ведёт к API скачивания. |
-| `ContentFileMetadata` / `contentFileMetadata` | `FileId: int`, `Metadata: BSON document` | Произвольные метаданные файла. Собственный `Id` выделяется независимо от `ContentFile.Id`; уникальный индекс `FileId` допускает не более одного документа метаданных для файла. |
+| `ContentFileMetadata` / `content_file_metadata` | `FileId: int`, `MetadataJson: JSONB` | Произвольные метаданные файла. Собственный `Id` выделяется независимо от `ContentFile.Id`; уникальный индекс `FileId` допускает не более одной записи метаданных для файла. |
 
 ```mermaid
 erDiagram
@@ -53,26 +51,19 @@ erDiagram
   `Platform` — обязательное перечисление доменного слоя: `Other = 0`, `Revit = 1`, `AutoCad = 2`.
   `PublishStatus` находится там же и имеет ровно три значения: `Draft = 0` («Черновик»),
   `Ready = 1` («Готов»), `Withdrawn = 2` («Снят»). Новая версия по умолчанию — `Draft`.
-  API и MongoDB используют числовые значения. Строковый `Status` сохраняется для совместимости
+  API и PostgreSQL используют числовые значения. Строковый `Status` сохраняется для совместимости
   и синхронизируется сервером с `PublishStatus`: `draft` / `published` / `archived`.
   Для Revit и AutoCad значение `Application` определяется платформой. Импорт RFA всегда
   задаёт `Platform.Revit`, включая чтение через мок-коннектор.
-  `ContentVersionEnumsMigration` при запуске API заполняет отсутствующие enum-поля по старым
-  `Application` и `Status`, сохраняя уже заданные значения. Неизвестные приложения получают `Other`.
 - Файл версии — от 1 байта до 100 MiB: `primary` и `attachment` допускают любые форматы,
   `type-catalog` — `.txt`, `lookup-table` — `.csv`.
   В версии допускается один основной файл `primary`; повторная загрузка возвращает 409.
-- `contentFileMetadata.Metadata` — BSON-документ произвольной структуры, связанный
+- `contentFileMetadata.MetadataJson` — JSONB произвольной структуры, связанный
   с файлом через `FileId`. Если метаданных нет, отдельный документ не создаётся.
-  В Domain содержимое представлено JSON-текстом `MetadataJson`, который не маппится
-  средствами EF. `MongoContentFileMetadataRepository` записывает BSON;
-  `MongoContentFileRepository` присоединяет метаданные по `FileId`, пакетно для списков.
+  В Domain содержимое представлено JSON-текстом `MetadataJson`; EF хранит его как JSONB.
+  PostgreSQL-репозиторий присоединяет метаданные по `FileId`, пакетно для списков.
   HTTP DTO по-прежнему возвращает JSON-объект `metadata`.
-  При удалении файла удаляется его документ метаданных. При запуске API
-  `ContentFileMetadataMigration` переносит прежнее поле `contentFiles.Metadata`
-  в отдельную коллекцию; повторный запуск не создаёт дубликатов, а старое поле
-  удаляется только после сохранения отдельного документа.
-  Предел MongoDB в 16 MiB остаётся применим к каждому документу метаданных.
+  При удалении файла запись метаданных удаляется каскадно.
   Схемы Revit, DWG и будущих коннекторов не становятся сущностями общего каталога.
   В актуальных метаданных Revit категория семейства называется `RevitCategory`,
   чтобы отличать её от категории общего каталога.
@@ -85,7 +76,7 @@ erDiagram
 | Поле | Тип | Описание |
 | --- | --- | --- |
 | `Id` | long | Автоматический идентификатор события. |
-| `ContentId` | int | ID карточки MongoDB; межбазового внешнего ключа нет. |
+| `ContentId` | int | ID карточки каталога. |
 | `OccurredAt` | DateTimeOffset | Время события. |
 | `Description` | string | Описание изменения; ручной ввод через API — до 2000 символов. |
 | `Author` | string | Автор из claims пользователя; хранится как текст. |

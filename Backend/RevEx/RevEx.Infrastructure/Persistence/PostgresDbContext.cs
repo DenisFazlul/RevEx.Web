@@ -4,6 +4,22 @@ namespace RevEx.Infrastructure.Persistence;
 
 public sealed class PostgresDbContext(DbContextOptions<PostgresDbContext> options) : DbContext(options)
 {
+    public DbSet<RevEx.Domain.Entities.Category> Categories => Set<RevEx.Domain.Entities.Category>();
+
+    public DbSet<RevEx.Domain.Entities.Content> Contents => Set<RevEx.Domain.Entities.Content>();
+
+    public DbSet<RevEx.Domain.Entities.ContentVersion> ContentVersions => Set<RevEx.Domain.Entities.ContentVersion>();
+
+    public DbSet<RevEx.Domain.Entities.ContentFile> ContentFiles => Set<RevEx.Domain.Entities.ContentFile>();
+
+    public DbSet<RevEx.Domain.Entities.ContentFileMetadata> ContentFileMetadata => Set<RevEx.Domain.Entities.ContentFileMetadata>();
+
+    public DbSet<RevEx.Domain.Entities.ContentStatus> ContentStatuses => Set<RevEx.Domain.Entities.ContentStatus>();
+
+    public DbSet<RevEx.Domain.Entities.Tag> Tags => Set<RevEx.Domain.Entities.Tag>();
+
+    public DbSet<RevEx.Domain.Entities.TagGroup> TagGroups => Set<RevEx.Domain.Entities.TagGroup>();
+
     /// <summary>История изменений контента: описание события, автор и время изменения.</summary>
     public DbSet<ContentHistoryEvent> History => Set<ContentHistoryEvent>();
 

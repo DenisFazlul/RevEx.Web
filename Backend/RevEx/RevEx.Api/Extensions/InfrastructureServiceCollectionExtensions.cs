@@ -16,15 +16,15 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton(configuration.GetSection("DesktopReleases").Get<DesktopReleaseOptions>() ?? new DesktopReleaseOptions());
         services.AddSingleton<IDesktopReleaseStore, FileDesktopReleaseStore>();
         services.AddSingleton<IRevitReleaseStore, FileRevitReleaseStore>();
-        services.AddScoped<IContentRepository, MongoContentRepository>();
-        services.AddScoped<IContentFileRepository, MongoContentFileRepository>();
-        services.AddScoped<IContentFileMetadataRepository, MongoContentFileMetadataRepository>();
-        services.AddScoped<ITagGroupRepository, MongoTagGroupRepository>();
-        services.AddScoped<IContentStatusRepository, MongoContentStatusRepository>();
-        services.AddScoped<ICategoryRepository, MongoCategoryRepository>();
-        services.AddScoped<ITagRepository, MongoTagRepository>();
-        services.AddScoped<IContentVersionRepository, MongoContentVersionRepository>();
-        services.AddScoped<IContentQueries, MongoContentQueries>();
+        services.AddScoped<IContentRepository, PostgresContentRepository>();
+        services.AddScoped<IContentFileRepository, PostgresContentFileRepository>();
+        services.AddScoped<IContentFileMetadataRepository, PostgresContentFileMetadataRepository>();
+        services.AddScoped<ITagGroupRepository, PostgresTagGroupRepository>();
+        services.AddScoped<IContentStatusRepository, PostgresContentStatusRepository>();
+        services.AddScoped<ICategoryRepository, PostgresCategoryRepository>();
+        services.AddScoped<ITagRepository, PostgresTagRepository>();
+        services.AddScoped<IContentVersionRepository, PostgresContentVersionRepository>();
+        services.AddScoped<IContentQueries, PostgresContentQueries>();
 
         var options = configuration
             .GetRequiredSection(FileStorageOptions.SectionName)

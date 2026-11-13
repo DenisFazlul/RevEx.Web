@@ -20,11 +20,6 @@ await using (var scope = app.Services.CreateAsyncScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<PostgresDbContext>();
     await db.Database.MigrateAsync();
-    await RevEx.Infrastructure.Persistence.Migrations.ContentVersionEnumsMigration.RunAsync(
-        scope.ServiceProvider.GetRequiredService<MongoDbContext>());
-    await RevEx.Infrastructure.Persistence.Migrations.ContentFileMetadataMigration.RunAsync(
-        scope.ServiceProvider.GetRequiredService<MongoDbContext>(),
-        scope.ServiceProvider.GetRequiredService<RevEx.Application.Abstractions.Persistence.IContentFileMetadataRepository>());
 }
 
 await app.SeedInitialDataAsync();

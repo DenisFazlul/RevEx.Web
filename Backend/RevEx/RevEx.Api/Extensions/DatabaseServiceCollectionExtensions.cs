@@ -12,8 +12,6 @@ public static class DatabaseServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        services.Configure<MongoDbOptions>(configuration.GetRequiredSection(MongoDbOptions.SectionName));
-        services.AddScoped<MongoDbContext>();
         services.AddScoped<RevEx.Application.Comments.ICommentStore, PostgresCommentStore>();
         services.Configure<ContentHistoryOptions>(
             configuration.GetRequiredSection(ContentHistoryOptions.SectionName));

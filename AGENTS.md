@@ -11,7 +11,7 @@ Project documentation lives in root docs/ beside docker-compose.yml.
 | `Backend/RevEx/RevEx.Api/` | Composition root, controllers, Swagger, JWT validation. |
 | `Backend/RevEx/RevEx.Application/` | Content use cases and persistence/storage/identity abstractions. |
 | `../RevEx.Domain/src/RevEx.Domain/` | Entities. |
-| `Backend/RevEx/RevEx.Infrastructure/` | EF Core MongoDB repositories, EF Core PostgreSQL history, file storage and releases. |
+| `Backend/RevEx/RevEx.Infrastructure/` | EF Core PostgreSQL repositories, file storage and releases. |
 
 Key files:
 
@@ -21,9 +21,9 @@ Key files:
 - `RevEx.Api/appsettings.json` — standalone issuer/audience settings.
 
 Preserve dependency direction: `Api -> Application/Infrastructure`,
-`Infrastructure -> Application/Domain`, and `Application -> Domain`. Catalog, content, versions, files, history and subscriptions controllers delegate to Application services. Each entity has its own repository interface inheriting the common CRUD contract IRepository<T>, and a concrete Mongo implementation inheriting MongoRepository<TEntity>. The abstract base implements common CRUD with virtual methods, a protected Context and a protected SaveAsync helper; override only operations that need entity-specific behavior. Load relations in explicit GetAllAsync/GetByIdAsync overrides using base reads, with batch loading for lists; do not add a generic hydration hook or entity-type conditionals to the base. Keep entity-specific methods in their specialized interfaces. Repositories persist each mutation immediately; there is no UnitOfWork or cross-store transaction. Do not inject persistence contexts or repositories into controllers.
+`Infrastructure -> Application/Domain`, and `Application -> Domain`. Catalog, content, versions, files, history and subscriptions controllers delegate to Application services. Each catalog entity has its own repository interface inheriting the common CRUD contract IRepository<T>, and a concrete PostgreSQL implementation inheriting PostgresRepository<TEntity>. Keep entity-specific methods in their specialized interfaces. Repositories persist each mutation immediately; there is no UnitOfWork. Do not inject persistence contexts or repositories into controllers.
 Shared transport DTOs live in ../RevEx.Domain/src/RevEx.Contracts; Domain has no reference to Contracts.
-Compose persists catalog metadata in MongoDB, history in PostgreSQL and files in named volumes.
+Compose persists every database entity in PostgreSQL and files in named volumes.
 Apply PostgreSQL migrations once in Startup.cs with a scoped PostgresDbContext and Database.MigrateAsync before seeding and starting hosted services. Persistence interfaces, stores, background workers and PostgresContextFactory must not expose or invoke migration initialization methods.
 
 All mapped controller endpoints are protected by default. Keep middleware order as

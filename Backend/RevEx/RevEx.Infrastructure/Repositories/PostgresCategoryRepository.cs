@@ -4,7 +4,7 @@ using RevEx.Infrastructure.Persistence;
 
 namespace RevEx.Infrastructure.Repositories;
 
-public sealed class MongoTagGroupRepository(MongoDbContext context)
-    : MongoRepository<TagGroup>(context, (entity, id) => entity.Id = id), ITagGroupRepository
+public sealed class PostgresCategoryRepository(PostgresDbContext context)
+    : PostgresRepository<Category>(context), ICategoryRepository
 {
 }

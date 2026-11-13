@@ -200,7 +200,7 @@ dotnet tests/DesktopReleaseChecks/bin/Debug/net8.0/DesktopReleaseChecks.dll
 HTTP-проверка `tests/DesktopReleaseChecks/http-checks.mjs` использует реальные
 роли Keycloak и `.env`, не выводит токены и пароли. Запускайте только против
 изолированного тестового API со своим каталогом релизов, схемой PostgreSQL и базой
-MongoDB. Адрес по умолчанию — `http://localhost:18082`, можно задать `REVEX_TEST_API_URL`.
+PostgreSQL. Адрес по умолчанию — `http://localhost:18082`, можно задать `REVEX_TEST_API_URL`.
 Предварительно создайте ZIP-fixture:
 
 ```bash

@@ -41,19 +41,6 @@ services:
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server "$$KAFKA_BOOTSTRAP_SERVERS" --create --if-not-exists --topic "$$KAFKA_TOPIC" --partitions 1 --replication-factor 1
         /opt/kafka/bin/kafka-configs.sh --bootstrap-server "$$KAFKA_BOOTSTRAP_SERVERS" --entity-type topics --entity-name "$$KAFKA_TOPIC" --alter --add-config "retention.ms=$$KAFKA_RETENTION_MS,cleanup.policy=delete,segment.ms=3600000,retention.bytes=-1"
 
-  mongodb:
-    image: mongo:8.0
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongodb-data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-    restart: unless-stopped
-
   history-postgres:
     image: postgres:17-alpine
     ports:
@@ -113,8 +100,6 @@ services:
       Authentication__Providers__Keycloak__MetadataAddress: http://keycloak:8080/realms/revex/.well-known/openid-configuration
       Authentication__Providers__Keycloak__Audience: revex-api
       Authentication__Providers__Keycloak__RequireHttpsMetadata: "false"
-      MongoDb__ConnectionString: mongodb://mongodb:27017
-      MongoDb__DatabaseName: revex
       ContentHistory__ConnectionString: Host=history-postgres;Port=5432;Database=${POSTGRES_DB:-revex_history};Username=${POSTGRES_USER:-revex};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       FileStorage__Provider: NetworkFolder
       FileStorage__NetworkFolder__Path: /app/storage/files
@@ -127,8 +112,6 @@ services:
         condition: service_completed_successfully
       keycloak:
         condition: service_started
-      mongodb:
-        condition: service_healthy
       history-postgres:
         condition: service_healthy
     restart: unless-stopped
@@ -144,7 +127,6 @@ services:
 
 volumes:
   kafka-data:
-  mongodb-data:
   content-history-data:
   revex-files:
   desktop-releases:

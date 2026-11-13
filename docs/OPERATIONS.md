@@ -10,7 +10,6 @@ Docker Desktop с Linux containers и Docker Compose v2.
 | Frontend | http://localhost:3000 | revex-frontend:80 |
 | API | http://localhost:8082 | revex-api:8080 |
 | Keycloak | http://localhost:8081 | keycloak:8080 |
-| MongoDB | localhost:27017 | mongodb:27017 |
 | PostgreSQL | localhost:5433 | history-postgres:5432 |
 
 Порт API 8082 выбран из-за другого сервиса Caddy на 8080 этой машины.
@@ -31,7 +30,7 @@ docker compose logs --tail=100 keycloak revex-api
 
 Не перезаписывайте существующий `.env` при обычном повторном запуске.
 Первые скачивания образов и импорт realm требуют времени.
-API зависит от healthy MongoDB/PostgreSQL; готовность Keycloak проверяйте отдельно:
+API зависит от healthy PostgreSQL; готовность Keycloak проверяйте отдельно:
 
 ```powershell
 Invoke-RestMethod http://localhost:8081/realms/revex/.well-known/openid-configuration
@@ -50,7 +49,7 @@ API каталога требует bearer-токен. Проверка толь
 | `REVEX_ADMIN_PASSWORD` | Пользователь admin realm revex. |
 | `REVEX_USER_PASSWORD` | Пользователь user realm revex. |
 | `REVEX_MODERATOR_PASSWORD` | Пользователь moder realm revex. |
-| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | База истории и учётная запись PostgreSQL. |
+| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Единая база приложения и учётная запись PostgreSQL. |
 
 `.env` исключён из Git. Для этой локальной среды по запросу владельца настроены
 `user/user`, `admin/admin` в revex и `admin/admin` для консоли master.
@@ -64,7 +63,7 @@ Bootstrap admin и admin приложения — разные аккаунты 
 
 ## Сохранность данных
 
-Volumes `mongodb-data`, `content-history-data`, `revex-files`, `desktop-releases`
+Volumes `content-history-data`, `revex-files`, `desktop-releases`
 сохраняют данные между обычными перезапусками. Keycloak в текущем Compose не имеет
 постоянного volume: пересоздание его контейнера заново импортирует пользователей,
 теряет локальные изменения realm и завершает существующие сеансы.
@@ -77,8 +76,8 @@ docker compose logs --tail=100 revex-api
 
 `docker compose down` удаляет контейнеры и сеть; `down -v` дополнительно удаляет
 данные volumes. Не используйте `down -v` для обычного перезапуска.
-Перед переносом сохраняйте согласованные копии MongoDB, PostgreSQL и обоих файловых
-volumes, а также `.env`, realm и тему. Восстановление проверяйте в отдельном окружении.
+Перед переносом сохраняйте согласованные копии PostgreSQL и обоих файловых volumes,
+а также `.env`, realm и тему. Восстановление проверяйте в отдельном окружении.
 
 ## Диагностика
 
@@ -91,7 +90,7 @@ volumes, а также `.env`, realm и тему. Восстановление �
 | 401 | Проверьте issuer, audience, срок токена и доступ API к metadata Keycloak. |
 | 403 | Пользователь вошёл, но не имеет роли для операции. |
 | 409 desktop_version_unsupported | Клиент передал версию, которую политика релизов не поддерживает. |
-| API не стартует | Проверьте MongoDB, строку PostgreSQL, health checks и логи инициализации. |
+| API не стартует | Проверьте строку PostgreSQL, health check и логи миграции. |
 | Нет ссылки скачивания desktop | Сначала загрузите и опубликуйте релиз подходящей платформы. |
 
 На 20.10.2026 проверены пять запущенных сервисов, вход admin в веб,

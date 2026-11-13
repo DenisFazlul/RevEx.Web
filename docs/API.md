@@ -78,7 +78,7 @@ dotnet run --project tools/OpenApiExport
 
 Генератор использует реальные MVC-контроллеры и ту же конфигурацию Swagger, что
 и API. Он записывает корневой `RevEx.Web/docs/openapi.json`, не запускает HTTP-сервер, не подключается
-к MongoDB, PostgreSQL или Keycloak и не создаёт тестовые данные.
+к PostgreSQL или Keycloak и не создаёт тестовые данные.
 После изменения API пересоберите спецификацию и закоммитьте её вместе с кодом.
 Документация хранится в корневой папке `RevEx.Web/docs` рядом с Docker Compose.
 

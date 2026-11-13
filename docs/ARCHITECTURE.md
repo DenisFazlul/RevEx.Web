@@ -8,7 +8,6 @@ flowchart LR
     Desktop[RevEx Desktop] --> API
     Web --> KC[Keycloak :8081]
     Desktop --> KC
-    API --> Mongo[(MongoDB)]
     API --> Pg[(PostgreSQL)]
     API --> Files[Файлы и архивы релизов]
     Desktop --> Local[Локальные коннекторы]
@@ -25,13 +24,13 @@ flowchart LR
 | `RevEx.Api` | Контроллеры, DI, Swagger, JWT, CORS, проверка совместимости desktop. |
 | `RevEx.Application` | Абстракции persistence/storage; общие DTO находятся в Domain. |
 | `RevEx.Domain` | Общие сущности, HTTP-контракты и роли из отдельного соседнего репозитория RevEx.Domain. |
-| `RevEx.Infrastructure` | MongoDB-репозитории, PostgreSQL-история, файловые хранилища, релизы. |
+| `RevEx.Infrastructure` | PostgreSQL EF Core-репозитории, файловые хранилища, релизы. |
 | `tools/OpenApiExport` | Генерация спецификации из MVC-контроллеров без запуска инфраструктуры. |
 | `tests/DesktopReleaseChecks` | Исполняемые проверки хранилища релизов и дополнительного аудита. |
 
 Направление зависимостей: Api → Application/Infrastructure,
 Infrastructure → Application/Domain, Application → Domain.
-Контроллеры используют `IRepository<T>` и `IUnitOfWork`.
+Контроллеры используют сервисы Application; репозитории реализуют `IRepository<T>`.
 
 При старте `Program.cs` инициализирует историю, добавляет начальные данные,
 подключает Swagger, CORS, authentication, authorization, middleware совместимости
@@ -39,8 +38,8 @@ Infrastructure → Application/Domain, Application → Domain.
 
 ## Хранение
 
-- MongoDB: категории, состояния, теги, группы, карточки, версии, метаданные файлов.
-- PostgreSQL: история контента, установки desktop, предложения обновлений и скачивания.
+- PostgreSQL: каталог, метаданные файлов, комментарии, история контента, подписки,
+  outbox, установки desktop, предложения обновлений и скачивания.
 - `NetworkFolder`: содержимое файлов в Docker volume `revex-files`.
 - `DesktopReleases:Path`: архивы и состояние релизов в `desktop-releases`.
 - Альтернативные провайдеры файлов: S3 и Memory; Compose выбирает NetworkFolder.

@@ -1,9 +1,13 @@
 using Microsoft.EntityFrameworkCore;
+using RevEx.Domain.Entities;
+
 namespace RevEx.Infrastructure.Persistence;
+
 public static class PostgresModel
 {
     public static void Configure(ModelBuilder model)
     {
+        ConfigureCatalog(model);
         model.Entity<ContentHistoryEvent>().ToTable("content_history_events");
         model.Entity<ContentHistoryEvent>().Property(x => x.Id).UseIdentityAlwaysColumn();
         model.Entity<ContentHistoryEvent>().Property(x => x.Author).HasMaxLength(300);
@@ -58,6 +62,92 @@ public static class PostgresModel
                 if(property.Name is "Platform" or "Version" or "FromVersion" or "Status") property.SetMaxLength(32);
             }
         }
+    }
+
+    private static void ConfigureCatalog(ModelBuilder model)
+    {
+        model.Entity<Category>().ToTable("categories");
+        model.Entity<Category>().Property(entity => entity.Id).UseIdentityByDefaultColumn();
+        model.Entity<Category>().Property(entity => entity.Name).HasMaxLength(300);
+
+        model.Entity<ContentStatus>().ToTable("content_statuses");
+        model.Entity<ContentStatus>().Property(entity => entity.Id).UseIdentityByDefaultColumn();
+        model.Entity<ContentStatus>().Property(entity => entity.Name).HasMaxLength(100);
+
+        model.Entity<TagGroup>().ToTable("tag_groups");
+        model.Entity<TagGroup>().Property(entity => entity.Id).UseIdentityByDefaultColumn();
+        model.Entity<TagGroup>().Property(entity => entity.Name).HasMaxLength(300);
+
+        model.Entity<Tag>().ToTable("tags");
+        model.Entity<Tag>().Property(entity => entity.Id).UseIdentityByDefaultColumn();
+        model.Entity<Tag>().Property(entity => entity.Name).HasMaxLength(300);
+        model.Entity<Tag>()
+            .HasOne(entity => entity.TagGroup)
+            .WithMany(entity => entity.Tags)
+            .HasForeignKey(entity => entity.TagGroupId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        model.Entity<Content>().ToTable("contents");
+        model.Entity<Content>().Property(entity => entity.Id).UseIdentityByDefaultColumn();
+        model.Entity<Content>().Property(entity => entity.Name).HasMaxLength(500);
+        model.Entity<Content>().Ignore(entity => entity.TagIds);
+        model.Entity<Content>().HasIndex(entity => entity.Cid).IsUnique();
+        model.Entity<Content>()
+            .HasOne(entity => entity.Category)
+            .WithMany(entity => entity.Contents)
+            .HasForeignKey(entity => entity.CategoryId)
+            .OnDelete(DeleteBehavior.Restrict);
+        model.Entity<Content>()
+            .HasOne(entity => entity.ContentStatus)
+            .WithMany(entity => entity.Contents)
+            .HasForeignKey(entity => entity.ContentStatusId)
+            .OnDelete(DeleteBehavior.Restrict);
+        model.Entity<Content>()
+            .HasOne(entity => entity.PreviewFile)
+            .WithMany()
+            .HasForeignKey(entity => entity.PreviewFileId)
+            .OnDelete(DeleteBehavior.SetNull);
+        model.Entity<Content>()
+            .HasMany(entity => entity.Tags)
+            .WithMany(entity => entity.Contents)
+            .UsingEntity(join => join.ToTable("content_tags"));
+
+        model.Entity<ContentVersion>().ToTable("content_versions");
+        model.Entity<ContentVersion>().Property(entity => entity.Id).UseIdentityByDefaultColumn();
+        model.Entity<ContentVersion>().Property(entity => entity.Name).HasMaxLength(100);
+        model.Entity<ContentVersion>().Property(entity => entity.Status).HasMaxLength(100);
+        model.Entity<ContentVersion>().Property(entity => entity.Application).HasMaxLength(100);
+        model.Entity<ContentVersion>().Property(entity => entity.ApplicationVersion).HasMaxLength(100);
+        model.Entity<ContentVersion>().Property(entity => entity.Platform).HasConversion<int>();
+        model.Entity<ContentVersion>().Property(entity => entity.PublishStatus).HasConversion<int>();
+        model.Entity<ContentVersion>().HasIndex(entity => entity.Vid).IsUnique();
+        model.Entity<ContentVersion>()
+            .HasOne(entity => entity.Content)
+            .WithMany(entity => entity.Versions)
+            .HasForeignKey(entity => entity.ContentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        model.Entity<ContentFile>().ToTable("content_files");
+        model.Entity<ContentFile>().Property(entity => entity.Id).UseIdentityByDefaultColumn();
+        model.Entity<ContentFile>().Property(entity => entity.OriginalFileName).HasMaxLength(500);
+        model.Entity<ContentFile>().Property(entity => entity.Extension).HasMaxLength(50);
+        model.Entity<ContentFile>().Property(entity => entity.Role).HasMaxLength(100);
+        model.Entity<ContentFile>().Ignore(entity => entity.MetadataJson);
+        model.Entity<ContentFile>()
+            .HasOne(entity => entity.ContentVersion)
+            .WithMany(entity => entity.Files)
+            .HasForeignKey(entity => entity.ContentVersionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        model.Entity<ContentFileMetadata>().ToTable("content_file_metadata");
+        model.Entity<ContentFileMetadata>().Property(entity => entity.Id).UseIdentityByDefaultColumn();
+        model.Entity<ContentFileMetadata>().Property(entity => entity.MetadataJson).HasColumnType("jsonb");
+        model.Entity<ContentFileMetadata>().HasIndex(entity => entity.FileId).IsUnique();
+        model.Entity<ContentFileMetadata>()
+            .HasOne<ContentFile>()
+            .WithOne()
+            .HasForeignKey<ContentFileMetadata>(entity => entity.FileId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }
 

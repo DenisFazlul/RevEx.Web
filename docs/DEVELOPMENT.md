@@ -10,7 +10,7 @@ cd Backend/RevEx
 dotnet build RevEx.sln
 ```
 
-Для запуска отдельно от Compose нужны MongoDB, PostgreSQL и Keycloak:
+Для запуска отдельно от Compose нужны PostgreSQL и Keycloak:
 
 ```powershell
 $env:ASPNETCORE_ENVIRONMENT = 'Development'
@@ -21,7 +21,7 @@ dotnet run --project RevEx.Api/RevEx.Api.csproj --no-launch-profile
 
 Остановите контейнер API перед использованием того же порта. Для отдельного процесса
 используйте публичный Authority; контейнерный MetadataAddress `keycloak:8080` на хосте не разрешается.
-`appsettings.json` задаёт MongoDB localhost:27017, NetworkFolder и пустую обязательную строку истории.
+`appsettings.json` задаёт NetworkFolder и пустую обязательную строку PostgreSQL.
 
 ## Frontend
 
@@ -64,6 +64,7 @@ dotnet run --project tools/OpenApiExport
 ```powershell
 # Из Backend/RevEx
 dotnet run --project tests/DesktopReleaseChecks
+dotnet run --project tests/ApiChecks
 # Из корня Web
 docker compose config --quiet
 ```
