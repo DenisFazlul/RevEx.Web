@@ -25,6 +25,7 @@ To replace the icon, update `revex-mark.svg` while keeping its path and square
 ## Realm contract
 
 - Realm: `revex`, default/supported locale: Russian.
+- Remember Me is enabled for 30 days and selected by default on the login page.
 - Desktop client: `revex-desktop`, public Authorization Code client with PKCE S256.
 - Allowed desktop redirect: `http://127.0.0.1:7890/`.
 - API bearer audience: `revex-api`, added by desktop and frontend client audience mappers.

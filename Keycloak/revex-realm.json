@@ -8,6 +8,9 @@
     "ru"
   ],
   "defaultLocale": "ru",
+  "rememberMe": true,
+  "ssoSessionIdleTimeoutRememberMe": 2592000,
+  "ssoSessionMaxLifespanRememberMe": 2592000,
   "accessTokenLifespan": 3600,
   "roles": {
     "realm": [

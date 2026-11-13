@@ -49,8 +49,7 @@
 
             <#if realm.rememberMe && !usernameHidden??>
                 <label class="remember-me" for="rememberMe">
-                    <input id="rememberMe" name="rememberMe" type="checkbox"
-                           <#if login.rememberMe??>checked</#if>>
+                    <input id="rememberMe" name="rememberMe" type="checkbox" checked>
                     <span>${msg("rememberMe")}</span>
                 </label>
             </#if>
