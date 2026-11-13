@@ -17,6 +17,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<RevEx.Application.Catalog.TagsService>();
         services.AddScoped<RevEx.Application.Catalog.TagGroupsService>();
         services.AddScoped<RevEx.Application.Catalog.ContentVersionsService>();
+        services.AddScoped<RevEx.Application.Catalog.RfaImportsService>();
         services.AddScoped<RevEx.Application.Catalog.ContentHistoryService>();
         return services;
     }
