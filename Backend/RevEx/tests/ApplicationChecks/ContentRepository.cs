@@ -12,6 +12,20 @@ sealed class ContentRepository : IContentRepository
     public Task<IReadOnlyCollection<Content>> GetAllAsync(CancellationToken token) => Task.FromResult<IReadOnlyCollection<Content>>(Items);
     public Task<Content?> GetByIdAsync(int id, CancellationToken token) => Task.FromResult(Items.FirstOrDefault(x => x.Id == id));
     public Task<Content?> GetByCidAsync(Guid cid, CancellationToken token) => Task.FromResult(Items.FirstOrDefault(x => x.Cid == cid));
+    public Task<bool> AnyWithCategoryIdAsync(int categoryId, CancellationToken token) =>
+        Task.FromResult(Items.Any(item => item.CategoryId == categoryId));
+    public Task<bool> AnyWithStatusIdAsync(int statusId, CancellationToken token) =>
+        Task.FromResult(Items.Any(item => item.ContentStatusId == statusId));
+    public Task RemoveTagFromAllAsync(int tagId, CancellationToken token)
+    {
+        foreach (var item in Items)
+        {
+            item.TagIds = item.TagIds.Where(id => id != tagId).ToArray();
+            item.Tags = item.Tags.Where(tag => tag.Id != tagId).ToArray();
+        }
+
+        return Task.CompletedTask;
+    }
     public Task<Content> AddAsync(Content entity, CancellationToken token) { entity.Id = Items.Count + 1; Items.Add(entity); return Task.FromResult(entity); }
     public Task UpdateAsync(Content entity, CancellationToken token) => Task.CompletedTask;
     public Task DeleteAsync(Content entity, CancellationToken token) { Items.Remove(entity); return Task.CompletedTask; }

@@ -41,16 +41,16 @@ services:
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server "$$KAFKA_BOOTSTRAP_SERVERS" --create --if-not-exists --topic "$$KAFKA_TOPIC" --partitions 1 --replication-factor 1
         /opt/kafka/bin/kafka-configs.sh --bootstrap-server "$$KAFKA_BOOTSTRAP_SERVERS" --entity-type topics --entity-name "$$KAFKA_TOPIC" --alter --add-config "retention.ms=$$KAFKA_RETENTION_MS,cleanup.policy=delete,segment.ms=3600000,retention.bytes=-1"
 
-  history-postgres:
+  postgres:
     image: postgres:17-alpine
     ports:
       - "5433:5432"
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-revex_history}
+      POSTGRES_DB: ${POSTGRES_DB:-revex}
       POSTGRES_USER: ${POSTGRES_USER:-revex}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     volumes:
-      - content-history-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -100,7 +100,7 @@ services:
       Authentication__Providers__Keycloak__MetadataAddress: http://keycloak:8080/realms/revex/.well-known/openid-configuration
       Authentication__Providers__Keycloak__Audience: revex-api
       Authentication__Providers__Keycloak__RequireHttpsMetadata: "false"
-      ContentHistory__ConnectionString: Host=history-postgres;Port=5432;Database=${POSTGRES_DB:-revex_history};Username=${POSTGRES_USER:-revex};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      Database__ConnectionString: Host=postgres;Port=5432;Database=${POSTGRES_DB:-revex};Username=${POSTGRES_USER:-revex};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       FileStorage__Provider: NetworkFolder
       FileStorage__NetworkFolder__Path: /app/storage/files
       DesktopReleases__Path: /app/storage/desktop-releases
@@ -112,7 +112,7 @@ services:
         condition: service_completed_successfully
       keycloak:
         condition: service_started
-      history-postgres:
+      postgres:
         condition: service_healthy
     restart: unless-stopped
 
@@ -127,6 +127,6 @@ services:
 
 volumes:
   kafka-data:
-  content-history-data:
+  postgres-data:
   revex-files:
   desktop-releases:

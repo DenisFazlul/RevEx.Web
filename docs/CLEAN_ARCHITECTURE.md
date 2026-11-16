@@ -24,9 +24,19 @@ Offset и Limit необязательны; сортировка по Id обе�
 many-to-many связь тегов, а `PostgresContentFileMetadataRepository` хранит
 динамические метаданные как JSONB с уникальным `FileId`.
 
+Query methods не возвращают `IQueryable` за границу Infrastructure. Проверки
+существования используют `AnyAsync`, а связанные наборы — пакетные методы (`GetByIds`,
+`GetByContentId`, `GetByContentVersionId`). Это сохраняет SQL внутри persistence boundary
+и не позволяет Application случайно создать N+1.
+
 API зависит от интерфейсов Application; контекст не передаётся контроллерам.
-Пустого UnitOfWork нет. Несколько мутаций, файловое хранилище и история не образуют
-общей транзакции, поэтому частичное выполнение между PostgreSQL и файлами возможно.
+Публичного UnitOfWork нет. Внутри одного repository operation EF-транзакции объединяют
+content+tags и file+metadata. Несколько application-операций, файловое хранилище,
+история, Kafka и SMTP не образуют общей транзакции, поэтому сервисы явно выполняют
+компенсацию и идемпотентные повторения там, где это требуется.
+
+`UpdatedAt` — concurrency token для каталожных `AuditableEntity`. Stale update и
+database constraint conflict преобразуются в application exception и HTTP 409.
 
 ## Проверка
 
@@ -35,9 +45,13 @@ API зависит от интерфейсов Application; контекст н�
 ```powershell
 dotnet build Backend/RevEx/RevEx.sln
 dotnet run --project Backend/RevEx/tests/ApplicationChecks
+$env:REVEX_TEST_POSTGRES = 'Host=localhost;Port=5433;Database=revex;Username=revex;Password=<password>'
 dotnet run --project Backend/RevEx/tests/ApiChecks
+dotnet run --project Backend/RevEx/tests/DesktopReleaseChecks
 docker compose up -d --build
 ```
 
 `ApiChecks` создаёт временную схему PostgreSQL, применяет стартовую миграцию и
-проверяет авторизованный HTTP CRUD и поиск через настоящий EF Core provider.
+проверяет авторизованный HTTP CRUD, поиск, ограничения и транзакционный rollback через
+настоящий EF Core provider. SQL interceptor контролирует фиксированное число команд для
+списка content, content с большим числом тегов и удаления связанного тега.

@@ -1,9 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+
 namespace RevEx.Infrastructure.Persistence;
 
 // Each operation owns a context; singleton stores and background workers never share a DbContext.
-public sealed class PostgresContextFactory(IOptions<ContentHistoryOptions> options)
+public sealed class PostgresContextFactory(IOptions<DatabaseOptions> options)
 {
     private readonly DbContextOptions<PostgresDbContext> settings = new DbContextOptionsBuilder<PostgresDbContext>()
         .UseNpgsql(
@@ -15,5 +16,8 @@ public sealed class PostgresContextFactory(IOptions<ContentHistoryOptions> optio
                     .Split(',')[0]
                     .Trim() ?? "public"))
         .Options;
-    public PostgresDbContext Create() => new(settings);
+    public PostgresDbContext Create()
+    {
+        return new PostgresDbContext(settings);
+    }
 }

@@ -11,6 +11,10 @@ sealed class TagGroupRepository : ITagGroupRepository
     public List<TagGroup> Items { get; } = [];
     public Task<IReadOnlyCollection<TagGroup>> GetAllAsync(CancellationToken token) => Task.FromResult<IReadOnlyCollection<TagGroup>>(Items);
     public Task<TagGroup?> GetByIdAsync(int id, CancellationToken token) => Task.FromResult(Items.FirstOrDefault(x => x.Id == id));
+    public Task<TagGroup?> GetByNameAsync(string name, CancellationToken token) =>
+        Task.FromResult(Items.FirstOrDefault(item => string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase)));
+    public Task<bool> NameExistsAsync(string name, int? excludedId, CancellationToken token) =>
+        Task.FromResult(Items.Any(item => item.Id != excludedId && string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase)));
     public Task<TagGroup> AddAsync(TagGroup entity, CancellationToken token) { entity.Id = Items.Count + 1; Items.Add(entity); return Task.FromResult(entity); }
     public Task UpdateAsync(TagGroup entity, CancellationToken token) => Task.CompletedTask;
     public Task DeleteAsync(TagGroup entity, CancellationToken token) { Items.Remove(entity); return Task.CompletedTask; }

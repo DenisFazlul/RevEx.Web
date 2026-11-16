@@ -7,12 +7,13 @@ public static class PostgresModel
 {
     public static void Configure(ModelBuilder model)
     {
+        model.HasPostgresExtension("citext");
         ConfigureCatalog(model);
         model.Entity<ContentHistoryEvent>().ToTable("content_history_events");
         model.Entity<ContentHistoryEvent>().Property(x => x.Id).UseIdentityAlwaysColumn();
         model.Entity<ContentHistoryEvent>().Property(x => x.Author).HasMaxLength(300);
         model.Entity<ContentHistoryEvent>().Property(x => x.OccurredAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
-        model.Entity<ContentHistoryEvent>().HasIndex(x => new { x.ContentId, x.OccurredAt, x.Id }).IsDescending(false,true,true).HasDatabaseName("ix_content_history_events_content_time");
+        model.Entity<ContentHistoryEvent>().HasIndex(x => new { x.ContentId, x.OccurredAt, x.Id }).IsDescending(false, true, true).HasDatabaseName("ix_content_history_events_content_time");
         model.Entity<ContentSubscription>().ToTable("content_subscriptions");
         model.Entity<ContentSubscription>().Property(x => x.Id).UseIdentityAlwaysColumn();
         model.Entity<ContentSubscription>().Property(x => x.SubscribedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
@@ -32,7 +33,7 @@ public static class PostgresModel
         model.Entity<DesktopOffer>().Property(x => x.Policy).HasColumnType("jsonb");
         model.Entity<DesktopOffer>().Property(x => x.OfferedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
         model.Entity<DesktopOffer>().HasOne<DesktopInstallation>().WithMany().HasForeignKey(x => x.InstallationId).OnDelete(DeleteBehavior.NoAction);
-        model.Entity<DesktopOffer>().HasIndex(x => new { x.InstallationId,x.OfferedAt }).IsDescending(false,true).HasDatabaseName("ix_desktop_update_offers_installation");
+        model.Entity<DesktopOffer>().HasIndex(x => new { x.InstallationId, x.OfferedAt }).IsDescending(false, true).HasDatabaseName("ix_desktop_update_offers_installation");
         model.Entity<DesktopDownload>().ToTable("desktop_downloads");
         model.Entity<DesktopDownload>().Property(x => x.StartedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
         model.Entity<DesktopDownload>().Property(x => x.Status).HasDefaultValue("started");
@@ -50,16 +51,35 @@ public static class PostgresModel
         model.Entity<RevEx.Domain.Entities.Comment>().Property(x => x.CreatedAt).HasComment("Время создания в UTC.");
         model.Entity<RevEx.Domain.Entities.Comment>().Property(x => x.UpdatedAt).HasComment("Время последнего изменения в UTC; null до первого редактирования.");
         model.Entity<RevEx.Domain.Entities.Comment>().HasOne(x => x.CommentSet).WithMany(x => x.Comments).HasForeignKey(x => x.CommentSetId).OnDelete(DeleteBehavior.Cascade);
-        model.Entity<RevEx.Domain.Entities.Comment>().HasIndex(x => new { x.CommentSetId,x.CreatedAt,x.Id });
-        model.Entity<RevEx.Domain.Entities.CommentSet>().HasIndex(x => new { x.CreatedAt,x.Id });
-        foreach(var entity in model.Model.GetEntityTypes()) foreach(var property in entity.GetProperties())
+        model.Entity<RevEx.Domain.Entities.Comment>().HasIndex(x => new { x.CommentSetId, x.CreatedAt, x.Id });
+        model.Entity<RevEx.Domain.Entities.CommentSet>().HasIndex(x => new { x.CreatedAt, x.Id });
+        foreach (var entity in model.Model.GetEntityTypes())
         {
-            var name = System.Text.RegularExpressions.Regex.Replace(property.Name,"(?<!^)([A-Z])","_$1").ToLowerInvariant();
-            property.SetColumnName(name);
-            if (entity.ClrType.Name.StartsWith("Desktop") && property.ClrType == typeof(string))
+            foreach (var property in entity.GetProperties())
             {
-                if(property.Name is "UserId" or "UserName") property.SetMaxLength(300);
-                if(property.Name is "Platform" or "Version" or "FromVersion" or "Status") property.SetMaxLength(32);
+                var name = System.Text.RegularExpressions.Regex
+                    .Replace(property.Name, "(?<!^)([A-Z])", "_$1")
+                    .ToLowerInvariant();
+                property.SetColumnName(name);
+                if (typeof(AuditableEntity).IsAssignableFrom(entity.ClrType) &&
+                    property.Name == nameof(AuditableEntity.UpdatedAt))
+                {
+                    property.IsConcurrencyToken = true;
+                }
+
+                if (entity.ClrType.Name.StartsWith("Desktop", StringComparison.Ordinal) &&
+                    property.ClrType == typeof(string))
+                {
+                    if (property.Name is "UserId" or "UserName")
+                    {
+                        property.SetMaxLength(300);
+                    }
+
+                    if (property.Name is "Platform" or "Version" or "FromVersion" or "Status")
+                    {
+                        property.SetMaxLength(32);
+                    }
+                }
             }
         }
     }
@@ -68,19 +88,23 @@ public static class PostgresModel
     {
         model.Entity<Category>().ToTable("categories");
         model.Entity<Category>().Property(entity => entity.Id).UseIdentityByDefaultColumn();
-        model.Entity<Category>().Property(entity => entity.Name).HasMaxLength(300);
+        model.Entity<Category>().Property(entity => entity.Name).HasColumnType("citext").HasMaxLength(200);
+        model.Entity<Category>().HasIndex(entity => entity.Name).IsUnique();
 
         model.Entity<ContentStatus>().ToTable("content_statuses");
         model.Entity<ContentStatus>().Property(entity => entity.Id).UseIdentityByDefaultColumn();
-        model.Entity<ContentStatus>().Property(entity => entity.Name).HasMaxLength(100);
+        model.Entity<ContentStatus>().Property(entity => entity.Name).HasColumnType("citext").HasMaxLength(100);
+        model.Entity<ContentStatus>().HasIndex(entity => entity.Name).IsUnique();
 
         model.Entity<TagGroup>().ToTable("tag_groups");
         model.Entity<TagGroup>().Property(entity => entity.Id).UseIdentityByDefaultColumn();
-        model.Entity<TagGroup>().Property(entity => entity.Name).HasMaxLength(300);
+        model.Entity<TagGroup>().Property(entity => entity.Name).HasColumnType("citext").HasMaxLength(100);
+        model.Entity<TagGroup>().HasIndex(entity => entity.Name).IsUnique();
 
         model.Entity<Tag>().ToTable("tags");
         model.Entity<Tag>().Property(entity => entity.Id).UseIdentityByDefaultColumn();
-        model.Entity<Tag>().Property(entity => entity.Name).HasMaxLength(300);
+        model.Entity<Tag>().Property(entity => entity.Name).HasColumnType("citext").HasMaxLength(100);
+        model.Entity<Tag>().HasIndex(entity => entity.Name).IsUnique();
         model.Entity<Tag>()
             .HasOne(entity => entity.TagGroup)
             .WithMany(entity => entity.Tags)
@@ -89,7 +113,8 @@ public static class PostgresModel
 
         model.Entity<Content>().ToTable("contents");
         model.Entity<Content>().Property(entity => entity.Id).UseIdentityByDefaultColumn();
-        model.Entity<Content>().Property(entity => entity.Name).HasMaxLength(500);
+        model.Entity<Content>().Property(entity => entity.Name).HasMaxLength(200);
+        model.Entity<Content>().Property(entity => entity.Description).HasMaxLength(2000);
         model.Entity<Content>().Ignore(entity => entity.TagIds);
         model.Entity<Content>().HasIndex(entity => entity.Cid).IsUnique();
         model.Entity<Content>()
@@ -112,9 +137,17 @@ public static class PostgresModel
             .WithMany(entity => entity.Contents)
             .UsingEntity(join => join.ToTable("content_tags"));
 
-        model.Entity<ContentVersion>().ToTable("content_versions");
+        model.Entity<ContentVersion>().ToTable("content_versions", table =>
+        {
+            table.HasCheckConstraint(
+                "ck_content_versions_platform",
+                "platform BETWEEN 0 AND 2");
+            table.HasCheckConstraint(
+                "ck_content_versions_publish_status",
+                "publish_status BETWEEN 0 AND 2");
+        });
         model.Entity<ContentVersion>().Property(entity => entity.Id).UseIdentityByDefaultColumn();
-        model.Entity<ContentVersion>().Property(entity => entity.Name).HasMaxLength(100);
+        model.Entity<ContentVersion>().Property(entity => entity.Name).HasMaxLength(200);
         model.Entity<ContentVersion>().Property(entity => entity.Status).HasMaxLength(100);
         model.Entity<ContentVersion>().Property(entity => entity.Application).HasMaxLength(100);
         model.Entity<ContentVersion>().Property(entity => entity.ApplicationVersion).HasMaxLength(100);
@@ -127,11 +160,18 @@ public static class PostgresModel
             .HasForeignKey(entity => entity.ContentId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        model.Entity<ContentFile>().ToTable("content_files");
+        model.Entity<ContentFile>().ToTable("content_files", table =>
+        {
+            table.HasCheckConstraint("ck_content_files_size", "size_bytes >= 0");
+        });
         model.Entity<ContentFile>().Property(entity => entity.Id).UseIdentityByDefaultColumn();
         model.Entity<ContentFile>().Property(entity => entity.OriginalFileName).HasMaxLength(500);
         model.Entity<ContentFile>().Property(entity => entity.Extension).HasMaxLength(50);
         model.Entity<ContentFile>().Property(entity => entity.Role).HasMaxLength(100);
+        model.Entity<ContentFile>()
+            .HasIndex(entity => new { entity.ContentVersionId, entity.Role })
+            .IsUnique()
+            .HasFilter("role = 'primary'");
         model.Entity<ContentFile>().Ignore(entity => entity.MetadataJson);
         model.Entity<ContentFile>()
             .HasOne(entity => entity.ContentVersion)
@@ -139,7 +179,12 @@ public static class PostgresModel
             .HasForeignKey(entity => entity.ContentVersionId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        model.Entity<ContentFileMetadata>().ToTable("content_file_metadata");
+        model.Entity<ContentFileMetadata>().ToTable("content_file_metadata", table =>
+        {
+            table.HasCheckConstraint(
+                "ck_content_file_metadata_object",
+                "jsonb_typeof(metadata_json) = 'object'");
+        });
         model.Entity<ContentFileMetadata>().Property(entity => entity.Id).UseIdentityByDefaultColumn();
         model.Entity<ContentFileMetadata>().Property(entity => entity.MetadataJson).HasColumnType("jsonb");
         model.Entity<ContentFileMetadata>().HasIndex(entity => entity.FileId).IsUnique();

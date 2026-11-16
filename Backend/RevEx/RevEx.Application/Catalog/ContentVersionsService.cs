@@ -7,6 +7,7 @@ using ContentEntity = RevEx.Domain.Entities.Content;
 using System.Text.Json;
 
 namespace RevEx.Application.Catalog;
+
 using RevEx.Application.Content;
 
 public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identity.ICurrentUser currentUser,
@@ -123,12 +124,66 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
         VersionFileUpload request,
         CancellationToken cancellationToken)
     {
+        return await AddFiles(id, [request], cancellationToken);
+    }
+
+    public async Task<ContentVersionDto> AddFiles(
+        int id,
+        IReadOnlyCollection<VersionFileUpload> requests,
+        CancellationToken cancellationToken)
+    {
         var version = await versionRepository.GetByIdAsync(id, cancellationToken);
         if (version is null)
         {
             throw new ContentOperationException(ContentFailure.NotFound);
         }
 
+        if (requests.Count == 0)
+        {
+            return Map(version);
+        }
+
+        var createdFiles = new List<ContentFile>(requests.Count);
+        try
+        {
+            foreach (var request in requests)
+            {
+                var file = await AddFileToVersion(version, request, cancellationToken);
+                version.Files.Add(file);
+                createdFiles.Add(file);
+            }
+
+            await versionRepository.UpdateAsync(version, cancellationToken);
+        }
+        catch
+        {
+            foreach (var file in createdFiles)
+            {
+                version.Files.Remove(file);
+                await DeleteFileIgnoringMissing(file, CancellationToken.None);
+            }
+
+            throw;
+        }
+
+        foreach (var file in createdFiles)
+        {
+            await historyStore.AddAsync(
+                version.ContentId,
+                $"Файл версии {Quote(version.Name)} изменён: {Quote("не задано")} → {Quote(file.OriginalFileName)}; " +
+                $"роль: {Quote(file.Role)}; размер: {file.SizeBytes} байт.",
+                currentUser.Author,
+                cancellationToken);
+        }
+
+        return Map(version);
+    }
+
+    private async Task<ContentFile> AddFileToVersion(
+        ContentVersion version,
+        VersionFileUpload request,
+        CancellationToken cancellationToken)
+    {
         if (request.Length == 0 || request.Length > MaximumFileSizeBytes)
         {
             throw new ContentOperationException(ContentFailure.BadRequest, "The uploaded file must be between 1 byte and 100 MB.");
@@ -179,7 +234,6 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
             ContentVersion = version
         };
         await fileRepository.AddAsync(file, cancellationToken);
-        version.Files.Add(file);
 
         try
         {
@@ -187,27 +241,27 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
             await fileStorage.SaveAsync(file.Id, stream, cancellationToken);
 
             file.Url = $"/api/content-files/{file.Id}/content";
-
             await fileRepository.UpdateAsync(file, cancellationToken);
-            await versionRepository.UpdateAsync(version, cancellationToken);
-
         }
         catch
         {
-            await fileStorage.DeleteAsync(file.Id, CancellationToken.None);
-            await fileRepository.DeleteAsync(file, CancellationToken.None);
-
+            await DeleteFileIgnoringMissing(file, CancellationToken.None);
             throw;
         }
 
-        await historyStore.AddAsync(
-            version.ContentId,
-            $"Файл версии {Quote(version.Name)} изменён: {Quote("не задано")} → {Quote(originalFileName)}; " +
-            $"роль: {Quote(role)}; размер: {request.Length} байт.",
-            currentUser.Author,
-            cancellationToken);
+        return file;
+    }
 
-        return Map(version);
+    private async Task DeleteFileIgnoringMissing(
+        ContentFile file,
+        CancellationToken cancellationToken)
+    {
+        await fileStorage.DeleteAsync(file.Id, cancellationToken);
+        var persistedFile = await fileRepository.GetByIdAsync(file.Id, cancellationToken);
+        if (persistedFile is not null)
+        {
+            await fileRepository.DeleteAsync(persistedFile, cancellationToken);
+        }
     }
 
     private static bool MatchesIdentifier(JsonElement metadata, string name, Guid expected)
@@ -354,7 +408,6 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
         foreach (var file in version.Files.ToArray())
         {
             await fileStorage.DeleteAsync(file.Id, cancellationToken);
-            await fileRepository.DeleteAsync(file, cancellationToken);
         }
 
         await versionRepository.DeleteAsync(version, cancellationToken);
@@ -382,7 +435,9 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
         AddChange(changes, "название", version.Name, name);
 
         if (version.Date != date)
+        {
             changes.Add($"дата: {Quote(FormatDate(version.Date))} → {Quote(FormatDate(date))}");
+        }
 
         AddChange(changes, "статус публикации", version.PublishStatus.ToString(), publishStatus.ToString());
         AddChange(changes, "платформа", version.Platform.ToString(), platform.ToString());
@@ -397,7 +452,9 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
     private static void AddChange(ICollection<string> changes, string field, string oldValue, string newValue)
     {
         if (!string.Equals(oldValue, newValue, StringComparison.Ordinal))
+        {
             changes.Add($"{field}: {Quote(oldValue)} → {Quote(newValue)}");
+        }
     }
 
     private static string FormatDate(DateTimeOffset value) =>

@@ -4,6 +4,7 @@ using RevEx.Domain.Entities;
 
 using ContentEntity = RevEx.Domain.Entities.Content;
 namespace RevEx.Application.Catalog;
+
 using RevEx.Application.Content;
 
 public sealed class TagsService(
@@ -85,13 +86,7 @@ public sealed class TagsService(
             throw new ContentOperationException(ContentFailure.NotFound);
         }
 
-        foreach (var content in await contents.GetAllAsync(cancellationToken))
-        {
-            if (!content.TagIds.Contains(id)) continue;
-            content.TagIds = content.TagIds.Where(tagId => tagId != id).ToArray();
-            content.Tags = content.Tags.Where(tag => tag.Id != id).ToList();
-            await contents.UpdateAsync(content, cancellationToken);
-        }
+        await contents.RemoveTagFromAllAsync(id, cancellationToken);
         await repository.DeleteAsync(entity, cancellationToken);
 
         return;
@@ -99,8 +94,7 @@ public sealed class TagsService(
 
     private async Task<bool> NameExists(string name, int? excludedId, CancellationToken cancellationToken)
     {
-        var tags = await repository.GetAllAsync(cancellationToken);
-        return tags.Any(item => item.Id != excludedId && string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase));
+        return await repository.NameExistsAsync(name, excludedId, cancellationToken);
     }
 
     private static TagDto Map(Tag entity) =>

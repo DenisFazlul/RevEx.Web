@@ -20,18 +20,24 @@ public static class InitialDataSeeder
         IFileStorage fileStorage,
         CancellationToken cancellationToken = default)
     {
-        var category = (await categories.GetAllAsync(cancellationToken)).FirstOrDefault(x => x.Name == "Общие");
+        var category = await categories.GetByNameAsync("Общие", cancellationToken);
         if (category is null)
+        {
             category = await categories.AddAsync(new Category { Name = "Общие" }, cancellationToken);
+        }
 
-        var status = (await statuses.GetAllAsync(cancellationToken)).FirstOrDefault(x => x.Name == "draft");
+        var status = await statuses.GetByNameAsync("draft", cancellationToken);
         if (status is null)
+        {
             status = await statuses.AddAsync(new ContentStatus { Name = "draft" }, cancellationToken);
+        }
 
-        if (!(await tagGroups.GetAllAsync(cancellationToken)).Any(x => x.Name == "Общие"))
+        if (await tagGroups.GetByNameAsync("Общие", cancellationToken) is null)
+        {
             await tagGroups.AddAsync(new TagGroup { Name = "Общие" }, cancellationToken);
+        }
 
-        if (!(await contents.GetAllAsync(cancellationToken)).Any(x => x.Name == "Добро пожаловать в RevEx"))
+        if (await contents.GetByCidAsync(WelcomeCid, cancellationToken) is null)
         {
             await contents.AddAsync(new ContentEntity
             {
@@ -46,7 +52,7 @@ public static class InitialDataSeeder
         }
 
         const string doorName = "Дверь с остеклением и нажимной пластиной";
-        var door = (await contents.GetAllAsync(cancellationToken)).FirstOrDefault(x => x.Name == doorName);
+        var door = await contents.GetByCidAsync(DoorCid, cancellationToken);
         if (door is null)
         {
             door = await contents.AddAsync(new ContentEntity
@@ -79,8 +85,10 @@ public static class InitialDataSeeder
         IFileStorage fileStorage,
         CancellationToken cancellationToken)
     {
-        var version = (await versions.GetAllAsync(cancellationToken))
-            .FirstOrDefault(x => x.ContentId == contentId && x.Name == name);
+        var version = await versions.GetByContentIdAndNameAsync(
+            contentId,
+            name,
+            cancellationToken);
         if (version is null)
         {
             version = await versions.AddAsync(new ContentVersion
@@ -96,7 +104,7 @@ public static class InitialDataSeeder
             }, cancellationToken);
         }
 
-        var file = (await files.GetAllAsync(cancellationToken))
+        var file = (await files.GetByContentVersionIdAsync(version.Id, cancellationToken))
             .FirstOrDefault(x => x.ContentVersionId == version.Id && x.Role == "primary");
         if (file is null)
         {

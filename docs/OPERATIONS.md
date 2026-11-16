@@ -10,7 +10,8 @@ Docker Desktop с Linux containers и Docker Compose v2.
 | Frontend | http://localhost:3000 | revex-frontend:80 |
 | API | http://localhost:8082 | revex-api:8080 |
 | Keycloak | http://localhost:8081 | keycloak:8080 |
-| PostgreSQL | localhost:5433 | history-postgres:5432 |
+| PostgreSQL | localhost:5433 | postgres:5432 |
+| Kafka | не опубликован | kafka:9092 |
 
 Порт API 8082 выбран из-за другого сервиса Caddy на 8080 этой машины.
 Не останавливайте чужой сервис для запуска RevEx. Если меняете порт, синхронизируйте
@@ -30,7 +31,8 @@ docker compose logs --tail=100 keycloak revex-api
 
 Не перезаписывайте существующий `.env` при обычном повторном запуске.
 Первые скачивания образов и импорт realm требуют времени.
-API зависит от healthy PostgreSQL; готовность Keycloak проверяйте отдельно:
+API зависит от healthy PostgreSQL, завершившегося `kafka-init` и запущенного Keycloak.
+Готовность Keycloak проверяйте отдельно:
 
 ```powershell
 Invoke-RestMethod http://localhost:8081/realms/revex/.well-known/openid-configuration
@@ -63,7 +65,7 @@ Bootstrap admin и admin приложения — разные аккаунты 
 
 ## Сохранность данных
 
-Volumes `content-history-data`, `revex-files`, `desktop-releases`
+Volumes `postgres-data`, `kafka-data`, `revex-files`, `desktop-releases`
 сохраняют данные между обычными перезапусками. Keycloak в текущем Compose не имеет
 постоянного volume: пересоздание его контейнера заново импортирует пользователей,
 теряет локальные изменения realm и завершает существующие сеансы.
@@ -76,8 +78,13 @@ docker compose logs --tail=100 revex-api
 
 `docker compose down` удаляет контейнеры и сеть; `down -v` дополнительно удаляет
 данные volumes. Не используйте `down -v` для обычного перезапуска.
-Перед переносом сохраняйте согласованные копии PostgreSQL и обоих файловых volumes,
+Перед переносом сохраняйте согласованные копии PostgreSQL, Kafka и обоих файловых volumes,
 а также `.env`, realm и тему. Восстановление проверяйте в отдельном окружении.
+
+Текущая база создаётся единственной миграцией `InitialPostgres`; прежние данные других
+database provider не переносятся. В Compose/dev миграция применяется API при старте.
+Для production применяйте проверенный migration bundle или SQL script отдельным deployment
+step до запуска реплик API; не выдавайте runtime-учётной записи права DDL.
 
 ## Диагностика
 
@@ -90,8 +97,10 @@ docker compose logs --tail=100 revex-api
 | 401 | Проверьте issuer, audience, срок токена и доступ API к metadata Keycloak. |
 | 403 | Пользователь вошёл, но не имеет роли для операции. |
 | 409 desktop_version_unsupported | Клиент передал версию, которую политика релизов не поддерживает. |
-| API не стартует | Проверьте строку PostgreSQL, health check и логи миграции. |
+| API не стартует | Проверьте `Database__ConnectionString`, health PostgreSQL, `kafka-init` и логи миграции. |
 | Нет ссылки скачивания desktop | Сначала загрузите и опубликуйте релиз подходящей платформы. |
 
-На 20.10.2026 проверены пять запущенных сервисов, вход admin в веб,
-OIDC-вход user/admin и чтение категорий с HTTP 200, главное окно Desktop с каталогом.
+13.11.2026 полный стек пересобран. Проверены healthy PostgreSQL/Kafka, единственная
+применённая migration, обязательный 401 без токена и авторизованный CRUD каталога с HTTP 2xx.
+В конце проверки временно разрешённый password grant Keycloak отключён; штатная JWT-
+авторизация сохранена.

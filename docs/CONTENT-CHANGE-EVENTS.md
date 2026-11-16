@@ -1,32 +1,42 @@
-# Content change events
+# События изменения контента
 
-After saving a content history entry in PostgreSQL, the API publishes its DTO directly
-to Kafka and waits for acknowledgement (delivery timeout: ten seconds).
-Kafka errors are logged; the saved history and successful API operation are preserved.
-There is no persistent queue, background dispatcher, backfill or later retry.
-A broker outage or process crash can therefore lose notifications.
-Existing legacy queue tables are no longer used and are left untouched.
+После сохранения `ContentHistoryEvent` в PostgreSQL backend публикует его DTO в Kafka.
+Producer использует `acks=all`, idempotent transport и timeout 10 секунд. При успешной
+публикации HTTP-сценарий продолжается без записи в outbox.
 
-## Configuration and startup
+Если Kafka возвращает `ProduceException`, сообщение сохраняется через EF Core в
+`kafka_outbox`. При отмене исходного запроса producer также пытается сохранить fallback
+отдельным десятисекундным токеном и затем повторно выбрасывает cancellation. Hosted service
+`KafkaOutboxDispatcher` выбирает по одному готовому сообщению через
+`FOR UPDATE SKIP LOCKED`; при успехе удаляет запись, при ошибке увеличивает `attempts`,
+сохраняет `last_error` и назначает повтор через 30 секунд.
 
-The root `.env` configures `KAFKA_BOOTSTRAP_SERVERS` (default `kafka:9092` inside
-Compose), `KAFKA_TOPIC` (default `content-changes`) and `KAFKA_RETENTION_MS`
-(default `864000000`, ten days). Standalone API configuration uses
-`Kafka__BootstrapServers` and `Kafka__Topic`; standalone defaults are
-`localhost:9092` and `content-changes`. Compose does not expose Kafka to the host.
+История и fallback outbox не записываются одной транзакцией: сначала фиксируется история,
+затем выполняется Kafka send, а outbox создаётся только после известного transport failure.
+Аварийное завершение процесса между этими шагами всё ещё может потерять уведомление.
+Message ID стабилен при повторной отправке из outbox, а consumer дополнительно хранит
+идемпотентные отметки доставки по `(event_id, user_id)`.
 
-Run `docker compose up -d --build`. The Kafka broker stores data in `kafka-data`.
-The one-shot `kafka-init` service creates the topic and applies retention settings
-also to an existing topic. The API waits for successful initialization.
-After changing retention, rerun `docker compose run --rm kafka-init`.
+## Конфигурация и запуск
 
-The topic uses delete cleanup, unlimited size retention, and one-hour segments.
-Kafka deletes expired segments asynchronously: physical deletion can lag the ten-day
-window by a segment interval, a retention check (five minutes), and deletion delay.
-This is a single-node development broker using plaintext inside the Compose network.
+Корневой `.env` задаёт `KAFKA_BOOTSTRAP_SERVERS` (по умолчанию `kafka:9092` внутри
+Compose), `KAFKA_TOPIC` (`content-changes`) и `KAFKA_RETENTION_MS`
+(`864000000`, десять дней). Standalone API использует `Kafka__BootstrapServers`,
+`Kafka__Topic` и `Kafka__NotificationGroupId`. Compose не публикует Kafka на host.
 
-## Message contract
+`docker compose up -d --build` запускает single-node plaintext broker. Volume `kafka-data`
+сохраняет журнал. One-shot service `kafka-init` создаёт topic и обновляет retention;
+API стартует после его успешного завершения. После изменения retention выполните:
 
-Messages are camelCase JSON: id, contentId, occurredAt, description, author.
-The key is the content ID. Producer idempotence is enabled for Kafka transport retries.
-Delivery is not atomic with PostgreSQL history writes.
+```powershell
+docker compose run --rm kafka-init
+```
+
+Topic использует `cleanup.policy=delete`, unlimited `retention.bytes`, сегменты по одному часу.
+Физическое удаление просроченных сегментов выполняется Kafka асинхронно.
+
+## Контракт
+
+Сообщение — camelCase JSON: `id`, `contentId`, `occurredAt`, `description`, `author`.
+Kafka key — строковый content ID. Consumer group вручную commit’ит offset только после
+успешной обработки всех получателей; детали — в [CONTENT_SUBSCRIPTIONS.md](CONTENT_SUBSCRIPTIONS.md).

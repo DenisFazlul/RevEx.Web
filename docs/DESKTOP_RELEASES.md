@@ -119,8 +119,9 @@ Backend получает пользователя из проверенного 
 backend; для нескольких реплик нужны общее хранилище и распределённая синхронизация.
 
 **Учёт хранится в уже существующей PostgreSQL**, с тем же подключением
-`ContentHistory:ConnectionString`. Отдельный сервер БД не создаётся. При запуске
-backend применяет EF Core migrations при запуске через `Database.MigrateAsync()` в `Startup.cs`:
+`Database:ConnectionString`. Отдельный сервер БД не создаётся. Таблицы входят в
+единственную EF Core migration `InitialPostgres`; в Compose/dev backend применяет её
+через `Database.MigrateAsync()` в `Startup.cs` до запуска HTTP pipeline:
 
 - `desktop_installations` — последняя сообщённая версия, платформа, пользователь,
   время последнего обращения и хеш ключа установки;

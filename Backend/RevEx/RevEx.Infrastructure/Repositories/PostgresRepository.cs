@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using RevEx.Application.Abstractions.Persistence;
 using RevEx.Domain.Entities;
 using RevEx.Infrastructure.Persistence;
@@ -35,8 +36,12 @@ public abstract class PostgresRepository<TEntity>(PostgresDbContext context) : I
 
     public virtual async Task UpdateAsync(TEntity entity, CancellationToken token)
     {
+        var originalUpdatedAt = entity.UpdatedAt;
+        Context.Attach(entity);
         entity.UpdatedAt = DateTimeOffset.UtcNow;
-        Context.Entry(entity).State = EntityState.Modified;
+        var entry = Context.Entry(entity);
+        entry.State = EntityState.Modified;
+        entry.Property(item => item.UpdatedAt).OriginalValue = originalUpdatedAt;
         await SaveAsync(token);
     }
 
@@ -48,7 +53,26 @@ public abstract class PostgresRepository<TEntity>(PostgresDbContext context) : I
 
     protected async Task SaveAsync(CancellationToken token)
     {
-        await Context.SaveChangesAsync(token);
-        Context.ChangeTracker.Clear();
+        try
+        {
+            await Context.SaveChangesAsync(token);
+            Context.ChangeTracker.Clear();
+        }
+        catch (DbUpdateConcurrencyException exception)
+        {
+            Context.ChangeTracker.Clear();
+            throw new PersistenceConflictException(
+                "The record was changed or deleted by another request.",
+                exception);
+        }
+        catch (DbUpdateException exception) when (
+            exception.InnerException is PostgresException postgresException &&
+            postgresException.SqlState is PostgresErrorCodes.UniqueViolation or PostgresErrorCodes.ForeignKeyViolation)
+        {
+            Context.ChangeTracker.Clear();
+            throw new PersistenceConflictException(
+                "The operation conflicts with existing or related data.",
+                exception);
+        }
     }
 }

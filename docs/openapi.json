@@ -4274,6 +4274,187 @@
         }
       }
     },
+    "/api/imports/rfa": {
+      "post": {
+        "tags": [
+          "RfaImports"
+        ],
+        "operationId": "RfaImports_Import",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "required": [
+                  "ApplicationVersion",
+                  "Cid",
+                  "ContentName",
+                  "File",
+                  "MetadataJson",
+                  "VersionName",
+                  "Vid"
+                ],
+                "type": "object",
+                "properties": {
+                  "Cid": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "Vid": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "ContentName": {
+                    "type": "string"
+                  },
+                  "Description": {
+                    "type": "string"
+                  },
+                  "CategoryId": {
+                    "type": "integer",
+                    "format": "int32"
+                  },
+                  "VersionName": {
+                    "type": "string"
+                  },
+                  "Date": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "ApplicationVersion": {
+                    "type": "string"
+                  },
+                  "File": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "MetadataJson": {
+                    "type": "string"
+                  },
+                  "AuxiliaryFiles": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    }
+                  }
+                }
+              },
+              "encoding": {
+                "Cid": {
+                  "style": "form"
+                },
+                "Vid": {
+                  "style": "form"
+                },
+                "ContentName": {
+                  "style": "form"
+                },
+                "Description": {
+                  "style": "form"
+                },
+                "CategoryId": {
+                  "style": "form"
+                },
+                "VersionName": {
+                  "style": "form"
+                },
+                "Date": {
+                  "style": "form"
+                },
+                "ApplicationVersion": {
+                  "style": "form"
+                },
+                "File": {
+                  "style": "form"
+                },
+                "MetadataJson": {
+                  "style": "form"
+                },
+                "AuxiliaryFiles": {
+                  "style": "form"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentVersionDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentVersionDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentVersionDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Требуется аутентификация."
+          },
+          "403": {
+            "description": "Недостаточно прав."
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ],
+        "x-authorization-policies": [
+          "EditContent"
+        ]
+      }
+    },
     "/api/tag-groups": {
       "get": {
         "tags": [

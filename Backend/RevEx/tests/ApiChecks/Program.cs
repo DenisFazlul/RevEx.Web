@@ -13,12 +13,14 @@ using RevEx.Infrastructure.Repositories;
 using RevEx.Infrastructure.Storage;
 
 var connectionString = Environment.GetEnvironmentVariable("REVEX_TEST_POSTGRES")
-    ?? "Host=localhost;Port=5433;Database=revex_history;Username=revex;Password=revex";
+    ?? throw new InvalidOperationException(
+        "Set REVEX_TEST_POSTGRES to an isolated PostgreSQL database.");
 var schema = "api_checks_" + Guid.NewGuid().ToString("N");
 var isolatedConnectionString = new Npgsql.NpgsqlConnectionStringBuilder(connectionString)
 {
-    SearchPath = schema
+    SearchPath = $"{schema},public"
 }.ConnectionString;
+var commandCounter = new CommandCounterInterceptor();
 
 var builder = WebApplication.CreateBuilder();
 builder.WebHost.UseUrls("http://127.0.0.1:0");
@@ -32,6 +34,7 @@ builder.Services.AddScoped(_ => new PostgresDbContext(
         .UseNpgsql(
             isolatedConnectionString,
             postgres => postgres.MigrationsHistoryTable("__EFMigrationsHistory", schema))
+        .AddInterceptors(commandCounter)
         .Options));
 builder.Services.AddScoped<IContentRepository, PostgresContentRepository>();
 builder.Services.AddScoped<IContentFileRepository, PostgresContentFileRepository>();
@@ -98,6 +101,9 @@ try
     var content = await contentResponse.Content.ReadFromJsonAsync<ContentDto>()
         ?? throw new InvalidOperationException("Content response is empty.");
 
+    await VerifyOptimisticConcurrencyAsync(app.Services, content.Id);
+    await VerifyFileMetadataTransactionAsync(app.Services);
+
     var query = await client.GetFromJsonAsync<ContentDto[]>(
         "/api/content/query?Name=PostgreSQL&Limit=1");
     if (query is null || query.Length != 1 || query[0].Id != content.Id)
@@ -105,7 +111,9 @@ try
         throw new InvalidOperationException("PostgreSQL content query failed.");
     }
 
-    Console.WriteLine("PASS: authenticated HTTP CRUD and query through EF Core PostgreSQL.");
+    await VerifyBoundedQueryCountAsync(app.Services, client, category.Id, status.Id, commandCounter);
+
+    Console.WriteLine("PASS: authenticated PostgreSQL HTTP CRUD, query, constraints and bounded query counts.");
 }
 finally
 {
@@ -137,5 +145,131 @@ static async Task ExpectAsync(HttpResponseMessage response, HttpStatusCode statu
     {
         var body = await response.Content.ReadAsStringAsync();
         throw new InvalidOperationException($"Expected {status}, got {response.StatusCode}: {body}");
+    }
+}
+
+static async Task VerifyBoundedQueryCountAsync(
+    IServiceProvider services,
+    HttpClient client,
+    int categoryId,
+    int statusId,
+    CommandCounterInterceptor counter)
+{
+    int[] tagIds;
+    using (var scope = services.CreateScope())
+    {
+        var groups = scope.ServiceProvider.GetRequiredService<ITagGroupRepository>();
+        var tags = scope.ServiceProvider.GetRequiredService<ITagRepository>();
+        var group = await groups.AddAsync(new RevEx.Domain.Entities.TagGroup
+        {
+            Name = "N+1 checks"
+        }, default);
+        var createdTags = new List<RevEx.Domain.Entities.Tag>();
+        for (var index = 0; index < 20; index++)
+        {
+            var tag = await tags.AddAsync(new RevEx.Domain.Entities.Tag
+            {
+                Name = $"N+1 tag {index}",
+                TagGroupId = group.Id
+            }, default);
+            createdTags.Add(tag);
+        }
+
+        tagIds = createdTags.Select(tag => tag.Id).ToArray();
+    }
+
+    counter.Reset();
+    var createResponse = await client.PostAsJsonAsync("/api/content", new CreateContentDto
+    {
+        Cid = Uuid7.Create(),
+        Name = "N+1 bounded content",
+        Description = "Twenty tags must be resolved in one query.",
+        CategoryId = categoryId,
+        ContentStatusId = statusId,
+        TagIds = tagIds
+    });
+    await ExpectAsync(createResponse, HttpStatusCode.Created);
+    if (counter.CommandCount > 9)
+    {
+        throw new InvalidOperationException(
+            $"Content creation issued {counter.CommandCount} database commands for 20 tags.");
+    }
+
+    counter.Reset();
+    var contents = await client.GetFromJsonAsync<ContentDto[]>("/api/content");
+    if (contents is null || contents.Length < 2)
+    {
+        throw new InvalidOperationException("Content list check returned an incomplete result.");
+    }
+
+    if (counter.CommandCount != 1)
+    {
+        throw new InvalidOperationException(
+            $"Content list issued {counter.CommandCount} database commands instead of one.");
+    }
+
+    counter.Reset();
+    var deleteResponse = await client.DeleteAsync($"/api/tags/{tagIds[0]}");
+    await ExpectAsync(deleteResponse, HttpStatusCode.NoContent);
+    if (counter.CommandCount > 6)
+    {
+        throw new InvalidOperationException(
+            $"Tag deletion issued {counter.CommandCount} database commands for related content.");
+    }
+}
+
+static async Task VerifyOptimisticConcurrencyAsync(IServiceProvider services, int contentId)
+{
+    using var firstScope = services.CreateScope();
+    using var secondScope = services.CreateScope();
+    var firstRepository = firstScope.ServiceProvider.GetRequiredService<IContentRepository>();
+    var secondRepository = secondScope.ServiceProvider.GetRequiredService<IContentRepository>();
+    var first = await firstRepository.GetByIdAsync(contentId, default)
+        ?? throw new InvalidOperationException("The concurrency fixture was not found.");
+    var second = await secondRepository.GetByIdAsync(contentId, default)
+        ?? throw new InvalidOperationException("The concurrency fixture was not found.");
+
+    first.Description = "First concurrent update";
+    await firstRepository.UpdateAsync(first, default);
+    second.Description = "Stale concurrent update";
+
+    try
+    {
+        await secondRepository.UpdateAsync(second, default);
+        throw new InvalidOperationException("A stale update overwrote a newer value.");
+    }
+    catch (PersistenceConflictException)
+    {
+    }
+}
+
+static async Task VerifyFileMetadataTransactionAsync(IServiceProvider services)
+{
+    using var scope = services.CreateScope();
+    var files = scope.ServiceProvider.GetRequiredService<IContentFileRepository>();
+    var before = (await files.GetAllAsync(default)).Count;
+    var file = new RevEx.Domain.Entities.ContentFile
+    {
+        Url = "pending",
+        OriginalFileName = "invalid-metadata.rfa",
+        Extension = ".rfa",
+        SizeBytes = 1,
+        Role = "attachment",
+        MetadataJson = "[]"
+    };
+
+    try
+    {
+        await files.AddAsync(file, default);
+        throw new InvalidOperationException("Non-object JSON metadata passed the database constraint.");
+    }
+    catch (Microsoft.EntityFrameworkCore.DbUpdateException)
+    {
+    }
+
+    var after = (await files.GetAllAsync(default)).Count;
+    if (after != before)
+    {
+        throw new InvalidOperationException("A failed metadata insert left an orphan file record.");
     }
 }

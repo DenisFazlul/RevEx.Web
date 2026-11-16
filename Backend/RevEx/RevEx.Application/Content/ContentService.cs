@@ -29,7 +29,11 @@ public sealed class ContentService(
         ContentQueryDto query,
         CancellationToken cancellationToken)
     {
-        if (query.Offset < 0 || query.Limit is <= 0) throw new ContentOperationException(ContentFailure.Validation, "Offset must be non-negative and Limit must be positive.");
+        if (query.Offset < 0 || query.Limit is <= 0)
+        {
+            throw new ContentOperationException(ContentFailure.Validation, "Offset must be non-negative and Limit must be positive.");
+        }
+
         return await queries.QueryAsync(query, cancellationToken);
     }
 
@@ -189,7 +193,7 @@ public sealed class ContentService(
             throw new ContentOperationException(ContentFailure.NotFound);
         }
 
-        var versions = await versionRepository.GetAllAsync(cancellationToken);
+        var versions = await versionRepository.GetByContentIdAsync(id, cancellationToken);
         var ownedFiles = versions
             .Where(version => version.ContentId == id)
             .SelectMany(version => version.Files)
@@ -209,6 +213,8 @@ public sealed class ContentService(
             await fileStorage.DeleteAsync(file.Id, cancellationToken);
         }
 
+        await repository.DeleteAsync(entity, cancellationToken);
+
         if (entity.PreviewFileId is int fileId)
         {
             var previewFile = ownedFiles.FirstOrDefault(file => file.Id == fileId);
@@ -217,12 +223,6 @@ public sealed class ContentService(
                 await fileRepository.DeleteAsync(previewFile, cancellationToken);
             }
         }
-
-        foreach (var file in ownedFiles.DistinctBy(file => file.Id).Where(file => file.Id != entity.PreviewFileId))
-            await fileRepository.DeleteAsync(file, cancellationToken);
-        foreach (var version in versions.Where(version => version.ContentId == id))
-            await versionRepository.DeleteAsync(version, cancellationToken);
-        await repository.DeleteAsync(entity, cancellationToken);
 
         await historyStore.AddAsync(
             id,
@@ -350,19 +350,14 @@ public sealed class ContentService(
         CancellationToken cancellationToken)
     {
         var ids = tagIds.Distinct().ToArray();
-        var tags = new List<Tag>(ids.Length);
-        foreach (var id in ids)
+        var tags = await tagRepository.GetByIdsAsync(ids, cancellationToken);
+        if (tags.Count != ids.Length)
         {
-            var tag = await tagRepository.GetByIdAsync(id, cancellationToken);
-            if (tag is null)
-            {
-                return null;
-            }
-
-            tags.Add(tag);
+            return null;
         }
 
-        return tags;
+        var tagsById = tags.ToDictionary(tag => tag.Id);
+        return ids.Select(id => tagsById[id]).ToArray();
     }
 
     private static string? BuildUpdateHistoryDescription(

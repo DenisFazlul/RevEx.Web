@@ -12,13 +12,16 @@ namespace RevEx.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.AlterDatabase()
+                .Annotation("Npgsql:PostgresExtension:citext", ",,");
+
             migrationBuilder.CreateTable(
                 name: "categories",
                 columns: table => new
                 {
                     id = table.Column<int>(type: "integer", nullable: false)
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    name = table.Column<string>(type: "character varying(300)", maxLength: 300, nullable: false),
+                    name = table.Column<string>(type: "citext", maxLength: 200, nullable: false),
                     created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     updated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
                 },
@@ -78,7 +81,7 @@ namespace RevEx.Infrastructure.Persistence.Migrations
                 {
                     id = table.Column<int>(type: "integer", nullable: false)
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    name = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    name = table.Column<string>(type: "citext", maxLength: 100, nullable: false),
                     created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     updated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
                 },
@@ -144,7 +147,7 @@ namespace RevEx.Infrastructure.Persistence.Migrations
                 {
                     id = table.Column<int>(type: "integer", nullable: false)
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    name = table.Column<string>(type: "character varying(300)", maxLength: 300, nullable: false),
+                    name = table.Column<string>(type: "citext", maxLength: 100, nullable: false),
                     created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     updated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
                 },
@@ -207,7 +210,7 @@ namespace RevEx.Infrastructure.Persistence.Migrations
                 {
                     id = table.Column<int>(type: "integer", nullable: false)
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    name = table.Column<string>(type: "character varying(300)", maxLength: 300, nullable: false),
+                    name = table.Column<string>(type: "citext", maxLength: 100, nullable: false),
                     tag_group_id = table.Column<int>(type: "integer", nullable: false),
                     created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     updated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
@@ -267,6 +270,7 @@ namespace RevEx.Infrastructure.Persistence.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_content_file_metadata", x => x.id);
+                    table.CheckConstraint("ck_content_file_metadata_object", "jsonb_typeof(metadata_json) = 'object'");
                 });
 
             migrationBuilder.CreateTable(
@@ -287,6 +291,7 @@ namespace RevEx.Infrastructure.Persistence.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_content_files", x => x.id);
+                    table.CheckConstraint("ck_content_files_size", "size_bytes >= 0");
                 });
 
             migrationBuilder.CreateTable(
@@ -296,8 +301,8 @@ namespace RevEx.Infrastructure.Persistence.Migrations
                     id = table.Column<int>(type: "integer", nullable: false)
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     cid = table.Column<Guid>(type: "uuid", nullable: false),
-                    name = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: false),
-                    description = table.Column<string>(type: "text", nullable: false),
+                    name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    description = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: false),
                     category_id = table.Column<int>(type: "integer", nullable: false),
                     content_status_id = table.Column<int>(type: "integer", nullable: false),
                     preview_file_id = table.Column<int>(type: "integer", nullable: true),
@@ -359,7 +364,7 @@ namespace RevEx.Infrastructure.Persistence.Migrations
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     vid = table.Column<Guid>(type: "uuid", nullable: true),
                     content_id = table.Column<int>(type: "integer", nullable: false),
-                    name = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     date = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     status = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
                     publish_status = table.Column<int>(type: "integer", nullable: false),
@@ -372,6 +377,8 @@ namespace RevEx.Infrastructure.Persistence.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_content_versions", x => x.id);
+                    table.CheckConstraint("ck_content_versions_platform", "platform BETWEEN 0 AND 2");
+                    table.CheckConstraint("ck_content_versions_publish_status", "publish_status BETWEEN 0 AND 2");
                     table.ForeignKey(
                         name: "FK_content_versions_contents_content_id",
                         column: x => x.content_id,
@@ -379,6 +386,12 @@ namespace RevEx.Infrastructure.Persistence.Migrations
                         principalColumn: "id",
                         onDelete: ReferentialAction.Cascade);
                 });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_categories_name",
+                table: "categories",
+                column: "name",
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_comment_sets_created_at_id",
@@ -397,15 +410,23 @@ namespace RevEx.Infrastructure.Persistence.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_content_files_content_version_id",
+                name: "IX_content_files_content_version_id_role",
                 table: "content_files",
-                column: "content_version_id");
+                columns: new[] { "content_version_id", "role" },
+                unique: true,
+                filter: "role = 'primary'");
 
             migrationBuilder.CreateIndex(
                 name: "ix_content_history_events_content_time",
                 table: "content_history_events",
                 columns: new[] { "content_id", "occurred_at", "id" },
                 descending: new[] { false, true, true });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_content_statuses_name",
+                table: "content_statuses",
+                column: "name",
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_content_subscriptions_content_id_user_id",
@@ -481,6 +502,18 @@ namespace RevEx.Infrastructure.Persistence.Migrations
                 name: "ix_kafka_outbox_pending",
                 table: "kafka_outbox",
                 column: "next_attempt_at");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_tag_groups_name",
+                table: "tag_groups",
+                column: "name",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_tags_name",
+                table: "tags",
+                column: "name",
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_tags_tag_group_id",

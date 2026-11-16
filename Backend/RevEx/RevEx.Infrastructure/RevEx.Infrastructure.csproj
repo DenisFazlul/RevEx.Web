@@ -7,14 +7,14 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="AWSSDK.S3" Version="4.0.103.1" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.20">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.34">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="8.0.20" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="8.0.34" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.2" />
     <PackageReference Include="Confluent.Kafka" Version="2.6.1" />
-    <PackageReference Include="Npgsql" Version="8.0.6" />
+    <PackageReference Include="Npgsql" Version="8.0.9" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.11" />
   </ItemGroup>
   <ItemGroup>

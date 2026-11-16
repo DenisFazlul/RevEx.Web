@@ -4,6 +4,7 @@ using RevEx.Domain.Entities;
 using ContentEntity = RevEx.Domain.Entities.Content;
 
 namespace RevEx.Application.Catalog;
+
 using RevEx.Application.Content;
 
 public sealed class CategoriesService(
@@ -82,8 +83,7 @@ public sealed class CategoriesService(
             throw new ContentOperationException(ContentFailure.NotFound);
         }
 
-        var contents = await contentRepository.GetAllAsync(cancellationToken);
-        if (contents.Any(content => content.CategoryId == id))
+        if (await contentRepository.AnyWithCategoryIdAsync(id, cancellationToken))
         {
             throw new ContentOperationException(ContentFailure.Conflict, "The category is used by content and cannot be deleted.");
         }

@@ -2,6 +2,9 @@
 
 ASP.NET Core API, React-интерфейс, Keycloak и инфраструктура Docker Compose для библиотеки контента RevEx.
 
+Backend использует одну PostgreSQL через EF Core; содержимое файлов и пакеты релизов
+остаются в файловых volumes. Схема создаётся единственной стартовой миграцией.
+
 Полная [документация проекта](docs/README.md) находится рядом с `docker-compose.yml`.
 
 ## Быстрый запуск
@@ -22,7 +25,8 @@ docker compose ps
 При локальной разработке Vite учитывайте отдельную настройку proxy.
 
 См. [запуск и диагностику](docs/OPERATIONS.md), [API](docs/API.md),
-[модель данных](docs/ENTITIES.md) и [релизы desktop](docs/DESKTOP_RELEASES.md).
+[модель данных](docs/ENTITIES.md), [EF Core](docs/ENTITY_FRAMEWORK.md)
+и [релизы desktop](docs/DESKTOP_RELEASES.md).
 
 
 Общие сущности и DTO вынесены в отдельный репозиторий: [подключение Domain](docs/DOMAIN.md).

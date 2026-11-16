@@ -13,18 +13,19 @@
 Все восемь сущностей каталога наследуют `AuditableEntity`: `CreatedAt` и
 `UpdatedAt` имеют тип `DateTimeOffset`. Их `Id` — целочисленный идентификатор.
 Связи обеспечиваются внешними ключами PostgreSQL и таблицей many-to-many для тегов.
+`UpdatedAt` является optimistic concurrency token: stale update возвращает HTTP 409.
 
 ## Каталог
 
 | Сущность / таблица PostgreSQL | Поля, кроме Id и общих дат | Назначение и связи |
 | --- | --- | --- |
 | `Category` / `categories` | `Name: string` | Категория каталога; одна категория содержит много карточек. |
-| `ContentStatus` / `contentStatuses` | `Name: string` | Справочник состояний карточки. Не совпадает со строковым статусом версии. |
-| `TagGroup` / `tagGroups` | `Name: string` | Группа тегов; содержит много `Tag`. |
+| `ContentStatus` / `content_statuses` | `Name: string` | Справочник состояний карточки. Не совпадает со строковым статусом версии. |
+| `TagGroup` / `tag_groups` | `Name: string` | Группа тегов; содержит много `Tag`. |
 | `Tag` / `tags` | `Name: string`, `TagGroupId: int` | Тег принадлежит группе; карточка может иметь несколько тегов. DTO дополнительно возвращает `TagGroupName`. |
 | `Content` / `contents` | `Name: string`, `Description: string`, `CategoryId: int`, `ContentStatusId: int`, `PreviewFileId: int?`, `TagIds: int[]` | Карточка контента: категория, состояние, необязательное превью, теги и версии. |
-| `ContentVersion` / `contentVersions` | `ContentId: int`, `Name: string`, `Date: DateTimeOffset`, `Platform: enum`, `PublishStatus: enum`, `Status: string`, `Application: string`, `ApplicationVersion: string` | Версия одной карточки. DTO дополнительно возвращает `FileIds`. |
-| `ContentFile` / `contentFiles` | `Url: string`, `OriginalFileName: string`, `Extension: string`, `SizeBytes: long`, `Role: string`, `ContentVersionId: int?` | Метаданные файла. Файл версии связан с `ContentVersion`; превью карточки не имеет `ContentVersionId`. `Url` ведёт к API скачивания. |
+| `ContentVersion` / `content_versions` | `ContentId: int`, `Name: string`, `Date: DateTimeOffset`, `Platform: enum`, `PublishStatus: enum`, `Status: string`, `Application: string`, `ApplicationVersion: string` | Версия одной карточки. DTO дополнительно возвращает `FileIds`. |
+| `ContentFile` / `content_files` | `Url: string`, `OriginalFileName: string`, `Extension: string`, `SizeBytes: long`, `Role: string`, `ContentVersionId: int?` | Метаданные файла. Файл версии связан с `ContentVersion`; превью карточки не имеет `ContentVersionId`. `Url` ведёт к API скачивания. |
 | `ContentFileMetadata` / `content_file_metadata` | `FileId: int`, `MetadataJson: JSONB` | Произвольные метаданные файла. Собственный `Id` выделяется независимо от `ContentFile.Id`; уникальный индекс `FileId` допускает не более одной записи метаданных для файла. |
 
 ```mermaid
@@ -44,7 +45,8 @@ erDiagram
 - Карточка: название до 200 символов, описание до 2000; категория обязательна.
   При создании без состояния используется `draft`; `TagIds: null` при изменении
   сохраняет текущие теги.
-- Названия тегов, групп и состояний — до 100 символов.
+- Название категории — до 200 символов; названия тегов, групп и состояний — до 100.
+  Все четыре справочника имеют регистронезависимую уникальность через `citext`.
 - Версия: название до 200 символов; `Status` — `draft`, `published` или `archived`;
   `Application` и `ApplicationVersion` — обязательные строки до 100 символов,
   например `revit` / `2026` или `autocad` / `R24.3`.
@@ -57,8 +59,9 @@ erDiagram
   задаёт `Platform.Revit`, включая чтение через мок-коннектор.
 - Файл версии — от 1 байта до 100 MiB: `primary` и `attachment` допускают любые форматы,
   `type-catalog` — `.txt`, `lookup-table` — `.csv`.
-  В версии допускается один основной файл `primary`; повторная загрузка возвращает 409.
-- `contentFileMetadata.MetadataJson` — JSONB произвольной структуры, связанный
+  В версии допускается один основной файл `primary`; правило защищено partial unique index,
+  повторная загрузка возвращает 409. На уровне БД `SizeBytes` не может быть отрицательным.
+- `ContentFileMetadata.MetadataJson` — JSONB-объект произвольной структуры, связанный
   с файлом через `FileId`. Если метаданных нет, отдельный документ не создаётся.
   В Domain содержимое представлено JSON-текстом `MetadataJson`; EF хранит его как JSONB.
   PostgreSQL-репозиторий присоединяет метаданные по `FileId`, пакетно для списков.
@@ -84,6 +87,19 @@ erDiagram
 История записывается при изменениях контента и файлов; также доступно ручное
 добавление события. Пользователи и роли управляются провайдером идентификации,
 отдельной доменной сущности пользователя в каталоге нет.
+
+## Служебные таблицы backend
+
+| Таблица | Назначение и ключевые ограничения |
+| --- | --- |
+| `content_subscriptions` | Подписка пользователя на content; уникальная пара `(content_id, user_id)`, email и `subscribed_at`. |
+| `content_notification_deliveries` | Идемпотентная отметка доставки; составной ключ `(event_id, user_id)`. |
+| `kafka_outbox` | Fallback-сообщение Kafka, число попыток, следующая попытка и последняя ошибка. |
+| `comment_sets` | Набор обсуждения с автором и временем создания. |
+| `comments` | Комментарий с FK на набор; каскадное удаление, индекс `(comment_set_id, created_at, id)`. |
+
+Все таблицы создаются единственной миграцией `InitialPostgres`. Runtime stores не
+создают и не изменяют DDL самостоятельно.
 
 ## Релизы desktop
 

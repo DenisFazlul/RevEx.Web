@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using RevEx.Application.Abstractions.Persistence;
 using RevEx.Domain.Entities;
 using RevEx.Infrastructure.Persistence;
@@ -10,6 +11,18 @@ public sealed class PostgresContentFileRepository(
     IContentFileMetadataRepository metadataRepository)
     : PostgresRepository<ContentFile>(context), IContentFileRepository
 {
+    public async Task<IReadOnlyCollection<ContentFile>> GetByContentVersionIdAsync(
+        int contentVersionId,
+        CancellationToken token)
+    {
+        var files = await Context.ContentFiles
+            .AsNoTracking()
+            .Where(file => file.ContentVersionId == contentVersionId)
+            .ToListAsync(token);
+        await PopulateMetadataAsync(files, token);
+        return files;
+    }
+
     public override async Task<IReadOnlyCollection<ContentFile>> GetAllAsync(CancellationToken token)
     {
         var files = await base.GetAllAsync(token);
@@ -35,18 +48,29 @@ public sealed class PostgresContentFileRepository(
             using var document = JsonDocument.Parse(entity.MetadataJson);
         }
 
-        var result = await base.AddAsync(entity, token);
-        if (entity.MetadataJson is not null)
+        await using var transaction = await Context.Database.BeginTransactionAsync(token);
+        try
         {
-            var metadata = new ContentFileMetadata
+            var result = await base.AddAsync(entity, token);
+            if (entity.MetadataJson is not null)
             {
-                FileId = result.Id,
-                MetadataJson = entity.MetadataJson
-            };
-            await metadataRepository.AddAsync(metadata, token);
-        }
+                var metadata = new ContentFileMetadata
+                {
+                    FileId = result.Id,
+                    MetadataJson = entity.MetadataJson
+                };
+                await metadataRepository.AddAsync(metadata, token);
+            }
 
-        return result;
+            await transaction.CommitAsync(token);
+            return result;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            Context.ChangeTracker.Clear();
+            throw;
+        }
     }
 
     private async Task PopulateMetadataAsync(

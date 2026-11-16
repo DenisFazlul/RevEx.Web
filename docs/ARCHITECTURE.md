@@ -9,6 +9,8 @@ flowchart LR
     Web --> KC[Keycloak :8081]
     Desktop --> KC
     API --> Pg[(PostgreSQL)]
+    API --> Kafka[Kafka]
+    Kafka --> SMTP[SMTP notifications]
     API --> Files[Файлы и архивы релизов]
     Desktop --> Local[Локальные коннекторы]
 ```
@@ -26,20 +28,24 @@ flowchart LR
 | `RevEx.Domain` | Общие сущности, HTTP-контракты и роли из отдельного соседнего репозитория RevEx.Domain. |
 | `RevEx.Infrastructure` | PostgreSQL EF Core-репозитории, файловые хранилища, релизы. |
 | `tools/OpenApiExport` | Генерация спецификации из MVC-контроллеров без запуска инфраструктуры. |
-| `tests/DesktopReleaseChecks` | Исполняемые проверки хранилища релизов и дополнительного аудита. |
+| `tests/ApplicationChecks` | Быстрые проверки правил Application без внешней инфраструктуры. |
+| `tests/ApiChecks` | Авторизованный HTTP CRUD на реальном PostgreSQL provider и SQL command-count assertions. |
+| `tests/ContentSubscriptionChecks` | PostgreSQL+Kafka pipeline и идемпотентность уведомлений. |
+| `tests/DesktopReleaseChecks` | Хранилище релизов, комментарии, миграция и Desktop tracking. |
 
 Направление зависимостей: Api → Application/Infrastructure,
 Infrastructure → Application/Domain, Application → Domain.
 Контроллеры используют сервисы Application; репозитории реализуют `IRepository<T>`.
 
-При старте `Program.cs` инициализирует историю, добавляет начальные данные,
-подключает Swagger, CORS, authentication, authorization, middleware совместимости
-и контроллеры. Поэтому доступность баз нужна ещё до приёма запросов.
+При старте `Startup.cs` применяет EF Core migration в scoped-контексте, затем добавляет
+начальные данные. HTTP pipeline включает Swagger, CORS, authentication, authorization,
+middleware совместимости и контроллеры. Hosted Kafka services стартуют после миграции;
+поэтому PostgreSQL нужен до приёма запросов.
 
 ## Хранение
 
 - PostgreSQL: каталог, метаданные файлов, комментарии, история контента, подписки,
-  outbox, установки desktop, предложения обновлений и скачивания.
+  отметки доставки, fallback outbox, установки desktop, предложения обновлений и скачивания.
 - `NetworkFolder`: содержимое файлов в Docker volume `revex-files`.
 - `DesktopReleases:Path`: архивы и состояние релизов в `desktop-releases`.
 - Альтернативные провайдеры файлов: S3 и Memory; Compose выбирает NetworkFolder.
@@ -74,3 +80,15 @@ Authorization Code + PKCE S256. Audience API — `revex-api`, роли в claim 
 Fallback policy требует вход и роль; отдельные методы релизов/обновлений публичны,
 но могут дополнительно требовать ключ установки. См. [API.md](API.md).
 ActiveDirectory/IIS предусмотрен кодом как отдельный режим; локальный Compose использует Keycloak.
+
+## Согласованность и производительность
+
+Все database-сущности проходят через EF Core. Каталожные записи и их связи защищены
+внешними ключами, уникальными/check constraints и optimistic concurrency по `UpdatedAt`.
+Content+tags и file+metadata сохраняются транзакционно. PostgreSQL не образует общей
+транзакции с файловым storage, Kafka или SMTP; соответствующие сценарии используют
+компенсацию, fallback outbox и idempotent delivery records.
+
+Lazy loading отсутствует. Коллекции загружаются eager/projection-запросами, а пакетные
+repository methods исключают запрос внутри цикла. Regression-проверки числа SQL-команд
+описаны в [ENTITY_FRAMEWORK.md](ENTITY_FRAMEWORK.md).

@@ -1,8 +1,8 @@
 namespace RevEx.Infrastructure.Persistence;
 
-public sealed class ContentHistoryOptions
+public sealed class DatabaseOptions
 {
-    public const string SectionName = "ContentHistory";
+    public const string SectionName = "Database";
 
     public string ConnectionString { get; init; } = string.Empty;
 }

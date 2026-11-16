@@ -1,15 +1,14 @@
 using RevEx.Application.Abstractions.Persistence;
+using RevEx.Application.Content;
 using RevEx.Domain.Contracts.Tag;
 using RevEx.Domain.Entities;
 
 namespace RevEx.Application.Catalog;
-using RevEx.Application.Content;
 
 public sealed class TagGroupsService(
     ITagGroupRepository repository,
     ITagRepository tagRepository)
 {
-
     public async Task<IReadOnlyCollection<TagGroupDto>> GetAll(CancellationToken cancellationToken)
     {
         var entities = await repository.GetAllAsync(cancellationToken);
@@ -25,9 +24,15 @@ public sealed class TagGroupsService(
     public async Task<TagGroupDto> Create(CreateTagGroupDto request, CancellationToken cancellationToken)
     {
         var name = request.Name.Trim();
-        if (string.IsNullOrWhiteSpace(name)) throw new ContentOperationException(ContentFailure.Validation, "Name must not be empty.");
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            throw new ContentOperationException(ContentFailure.Validation, "Name must not be empty.");
+        }
+
         if (await NameExists(name, null, cancellationToken))
+        {
             throw new ContentOperationException(ContentFailure.Conflict, "A tag group with this name already exists.");
+        }
 
         var entity = new TagGroup { Name = name };
         await repository.AddAsync(entity, cancellationToken);
@@ -38,11 +43,21 @@ public sealed class TagGroupsService(
     public async Task Update(int id, UpdateTagGroupDto request, CancellationToken cancellationToken)
     {
         var name = request.Name.Trim();
-        if (string.IsNullOrWhiteSpace(name)) throw new ContentOperationException(ContentFailure.Validation, "Name must not be empty.");
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            throw new ContentOperationException(ContentFailure.Validation, "Name must not be empty.");
+        }
+
         var entity = await repository.GetByIdAsync(id, cancellationToken);
-        if (entity is null) throw new ContentOperationException(ContentFailure.NotFound);
+        if (entity is null)
+        {
+            throw new ContentOperationException(ContentFailure.NotFound);
+        }
+
         if (await NameExists(name, id, cancellationToken))
+        {
             throw new ContentOperationException(ContentFailure.Conflict, "A tag group with this name already exists.");
+        }
 
         entity.Name = name;
         await repository.UpdateAsync(entity, cancellationToken);
@@ -53,10 +68,15 @@ public sealed class TagGroupsService(
     public async Task Delete(int id, CancellationToken cancellationToken)
     {
         var entity = await repository.GetByIdAsync(id, cancellationToken);
-        if (entity is null) throw new ContentOperationException(ContentFailure.NotFound);
-        var tags = await tagRepository.GetAllAsync(cancellationToken);
-        if (tags.Any(tag => tag.TagGroupId == id))
+        if (entity is null)
+        {
+            throw new ContentOperationException(ContentFailure.NotFound);
+        }
+
+        if (await tagRepository.AnyInGroupAsync(id, cancellationToken))
+        {
             throw new ContentOperationException(ContentFailure.Conflict, "Move or delete all tags in this group first.");
+        }
 
         await repository.DeleteAsync(entity, cancellationToken);
 
@@ -65,9 +85,7 @@ public sealed class TagGroupsService(
 
     private async Task<bool> NameExists(string name, int? excludedId, CancellationToken cancellationToken)
     {
-        var groups = await repository.GetAllAsync(cancellationToken);
-        return groups.Any(item => item.Id != excludedId &&
-            string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase));
+        return await repository.NameExistsAsync(name, excludedId, cancellationToken);
     }
 
     private static TagGroupDto Map(TagGroup entity) =>

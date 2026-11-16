@@ -76,15 +76,16 @@ public sealed class RfaImportsService(
 
         var current = await versionRepository.GetByIdAsync(result.Id, cancellationToken)
             ?? throw new ContentOperationException(ContentFailure.NotFound);
+        var uploads = new List<VersionFileUpload>();
 
         if (!current.Files.Any(file => file.Role == "primary"))
         {
-            result = await versionsService.AddFile(
-                current.Id,
-                request.PrimaryFile,
-                cancellationToken);
+            uploads.Add(request.PrimaryFile);
         }
 
+        var knownFiles = current.Files
+            .Select(file => $"{file.Role}\0{file.OriginalFileName}")
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var auxiliaryFile in request.AuxiliaryFiles)
         {
             var role = string.Equals(
@@ -93,10 +94,8 @@ public sealed class RfaImportsService(
                 StringComparison.OrdinalIgnoreCase)
                 ? "lookup-table"
                 : "attachment";
-            var alreadyUploaded = current.Files.Any(file =>
-                string.Equals(file.Role, role, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(file.OriginalFileName, Path.GetFileName(auxiliaryFile.FileName), StringComparison.OrdinalIgnoreCase));
-            if (alreadyUploaded)
+            var originalFileName = Path.GetFileName(auxiliaryFile.FileName);
+            if (!knownFiles.Add($"{role}\0{originalFileName}"))
             {
                 continue;
             }
@@ -107,7 +106,12 @@ public sealed class RfaImportsService(
                 auxiliaryFile.OpenReadStream,
                 role,
                 null);
-            result = await versionsService.AddFile(current.Id, upload, cancellationToken);
+            uploads.Add(upload);
+        }
+
+        if (uploads.Count > 0)
+        {
+            result = await versionsService.AddFiles(current.Id, uploads, cancellationToken);
         }
 
         return result;

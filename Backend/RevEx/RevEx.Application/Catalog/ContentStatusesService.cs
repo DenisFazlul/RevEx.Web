@@ -4,6 +4,7 @@ using RevEx.Domain.Entities;
 using ContentEntity = RevEx.Domain.Entities.Content;
 
 namespace RevEx.Application.Catalog;
+
 using RevEx.Application.Content;
 
 public sealed class ContentStatusesService(
@@ -33,8 +34,7 @@ public sealed class ContentStatusesService(
         }
 
         var name = request.Name.Trim();
-        var statuses = await repository.GetAllAsync(cancellationToken);
-        if (statuses.Any(item => string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase)))
+        if (await repository.NameExistsAsync(name, null, cancellationToken))
         {
             throw new ContentOperationException(ContentFailure.Conflict, "A content status with this name already exists.");
         }
@@ -62,8 +62,7 @@ public sealed class ContentStatusesService(
         }
 
         var name = request.Name.Trim();
-        var statuses = await repository.GetAllAsync(cancellationToken);
-        if (statuses.Any(item => item.Id != id && string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase)))
+        if (await repository.NameExistsAsync(name, id, cancellationToken))
         {
             throw new ContentOperationException(ContentFailure.Conflict, "A content status with this name already exists.");
         }
@@ -82,8 +81,7 @@ public sealed class ContentStatusesService(
             throw new ContentOperationException(ContentFailure.NotFound);
         }
 
-        var contents = await contentRepository.GetAllAsync(cancellationToken);
-        if (contents.Any(content => content.ContentStatusId == id))
+        if (await contentRepository.AnyWithStatusIdAsync(id, cancellationToken))
         {
             throw new ContentOperationException(ContentFailure.Conflict, "The status is used by content and cannot be deleted.");
         }

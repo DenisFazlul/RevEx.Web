@@ -1,4 +1,5 @@
 namespace RevEx.Infrastructure.Persistence;
+
 public sealed class ContentHistoryEvent
 {
     public long Id { get; set; }

@@ -15,8 +15,8 @@ Project documentation lives in root docs/ beside docker-compose.yml.
 
 Key files:
 
-- `RevEx.Api/Program.cs` — DI, CORS, Swagger bearer support, JWT authentication, and
-  the authenticated fallback policy.
+- `RevEx.Api/Startup.cs` — DI, migration/seeding, CORS, Swagger, JWT middleware and endpoints.
+- `RevEx.Api/Program.cs` — public partial Program marker used by integration hosting.
 - `RevEx.Api/Controllers/` — HTTP contract; inspect these before changing clients.
 - `RevEx.Api/appsettings.json` — standalone issuer/audience settings.
 
@@ -25,6 +25,8 @@ Preserve dependency direction: `Api -> Application/Infrastructure`,
 Shared transport DTOs live in ../RevEx.Domain/src/RevEx.Contracts; Domain has no reference to Contracts.
 Compose persists every database entity in PostgreSQL and files in named volumes.
 Apply PostgreSQL migrations once in Startup.cs with a scoped PostgresDbContext and Database.MigrateAsync before seeding and starting hosted services. Persistence interfaces, stores, background workers and PostgresContextFactory must not expose or invoke migration initialization methods.
+Do not enable EF lazy loading. Load required relations explicitly, project DTOs in SQL,
+and add batch repository methods instead of issuing a database query inside a loop.
 
 All mapped controller endpoints are protected by default. Keep middleware order as
 `UseCors`, `UseAuthentication`, `UseAuthorization`, then `MapControllers`.
@@ -65,7 +67,8 @@ Vite uses port 5173 and proxies `/api` to `127.0.0.1:8080`.
 - Theme guide: `WEB/Keycloak/README.md`.
 - Theme root: `WEB/Keycloak/themes/revex/login/`.
 
-Services and host ports: Keycloak 8081, API 8082, frontend 3000. The API container listens on 8080. The API container uses
+Services and host ports: PostgreSQL 5433, Keycloak 8081, API 8082, frontend 3000;
+Kafka is internal at `kafka:9092`. The API container listens on 8080. The API container uses
 `http://keycloak:8080/...` to fetch metadata but validates tokens against the public
 issuer `http://localhost:8081/realms/revex`. Do not collapse those two values without
 testing issuer validation from both host and container.
@@ -103,6 +106,6 @@ Do not use that assumption for a future persistent or production Keycloak databa
 
 Keep one declared type per file, including records, enums, interfaces and test helpers. Name each file after its type. Keep top-level startup statements in Startup.cs and the public Program declaration in Program.cs.
 
-Persistence contains contexts, mapping and migrations. Data-access implementations
-for both databases live in Repositories; messaging and notification features keep
+Persistence contains contexts, mapping and migrations. PostgreSQL data-access implementations
+live in Repositories; messaging and notification features keep
 their specialized stores beside their feature code. See docs/CLEAN_ARCHITECTURE.md.

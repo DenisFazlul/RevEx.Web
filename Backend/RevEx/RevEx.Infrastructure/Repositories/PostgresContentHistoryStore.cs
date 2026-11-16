@@ -1,40 +1,63 @@
-using RevEx.Infrastructure.Messaging;
-using Microsoft.Extensions.Options;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using RevEx.Application.Abstractions.Persistence;
 using RevEx.Domain.Contracts.ContentHistory;
-
+using RevEx.Infrastructure.Messaging;
 using RevEx.Infrastructure.Persistence;
+
 namespace RevEx.Infrastructure.Repositories;
 
 public sealed class PostgresContentHistoryStore : IContentHistoryStore, IAsyncDisposable
 {
     private readonly PostgresContextFactory factory;
-    private readonly ContentChangePublisher _publisher;
-    public PostgresContentHistoryStore(IOptions<ContentHistoryOptions> options, ContentChangePublisher publisher)
+    private readonly ContentChangePublisher publisher;
+
+    public PostgresContentHistoryStore(IOptions<DatabaseOptions> options, ContentChangePublisher publisher)
     {
-        factory = new(options);
-        _publisher = publisher;
+        factory = new PostgresContextFactory(options);
+        this.publisher = publisher;
     }
+
     public async Task<IReadOnlyCollection<ContentHistoryEventDto>> GetByContentIdAsync(
         int contentId,
         CancellationToken cancellationToken = default)
     {
-        await using var db = factory.Create();
-        return await db.History.AsNoTracking().Where(x => x.ContentId == contentId)
-            .OrderByDescending(x => x.OccurredAt).ThenByDescending(x => x.Id)
-            .Select(x => new ContentHistoryEventDto(x.Id, x.ContentId, x.OccurredAt, x.Description, x.Author))
+        await using var database = factory.Create();
+        var events = await database.History
+            .AsNoTracking()
+            .Where(item => item.ContentId == contentId)
+            .OrderByDescending(item => item.OccurredAt)
+            .ThenByDescending(item => item.Id)
+            .Select(item => new ContentHistoryEventDto(
+                item.Id,
+                item.ContentId,
+                item.OccurredAt,
+                item.Description,
+                item.Author))
             .ToListAsync(cancellationToken);
+        return events;
     }
-    public async Task<ContentHistoryEventDto> AddAsync(int contentId, string description, string author, CancellationToken cancellationToken = default)
+
+    public async Task<ContentHistoryEventDto> AddAsync(
+        int contentId,
+        string description,
+        string author,
+        CancellationToken cancellationToken = default)
     {
-        await using var db = factory.Create();
-        var entity = new ContentHistoryEvent { ContentId = contentId, Description = description, Author = author };
-        db.History.Add(entity);
-        await db.SaveChangesAsync(cancellationToken);
+        await using var database = factory.Create();
+        var entity = new ContentHistoryEvent
+        {
+            ContentId = contentId,
+            Description = description,
+            Author = author
+        };
+        database.History.Add(entity);
+        await database.SaveChangesAsync(cancellationToken);
+
         var change = new ContentHistoryEventDto(entity.Id, contentId, entity.OccurredAt, description, author);
-        await _publisher.PublishAsync(change, cancellationToken);
+        await publisher.PublishAsync(change, cancellationToken);
         return change;
     }
+
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

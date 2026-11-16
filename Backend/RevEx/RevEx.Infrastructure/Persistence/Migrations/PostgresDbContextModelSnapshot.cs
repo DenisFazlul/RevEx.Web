@@ -17,9 +17,10 @@ namespace RevEx.Infrastructure.Persistence.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.20")
+                .HasAnnotation("ProductVersion", "8.0.34")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
+            NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "citext");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("ContentTag", b =>
@@ -54,15 +55,19 @@ namespace RevEx.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)")
+                        .HasMaxLength(200)
+                        .HasColumnType("citext")
                         .HasColumnName("name");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
+                        .IsConcurrencyToken()
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
 
                     b.ToTable("categories", (string)null);
                 });
@@ -183,13 +188,14 @@ namespace RevEx.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Description")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
                         .HasColumnName("description");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
                         .HasColumnName("name");
 
                     b.Property<int?>("PreviewFileId")
@@ -197,6 +203,7 @@ namespace RevEx.Infrastructure.Persistence.Migrations
                         .HasColumnName("preview_file_id");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
+                        .IsConcurrencyToken()
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
@@ -254,6 +261,7 @@ namespace RevEx.Infrastructure.Persistence.Migrations
                         .HasColumnName("size_bytes");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
+                        .IsConcurrencyToken()
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
@@ -264,9 +272,14 @@ namespace RevEx.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ContentVersionId");
+                    b.HasIndex("ContentVersionId", "Role")
+                        .IsUnique()
+                        .HasFilter("role = 'primary'");
 
-                    b.ToTable("content_files", (string)null);
+                    b.ToTable("content_files", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_content_files_size", "size_bytes >= 0");
+                        });
                 });
 
             modelBuilder.Entity("RevEx.Domain.Entities.ContentFileMetadata", b =>
@@ -292,6 +305,7 @@ namespace RevEx.Infrastructure.Persistence.Migrations
                         .HasColumnName("metadata_json");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
+                        .IsConcurrencyToken()
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
@@ -300,7 +314,10 @@ namespace RevEx.Infrastructure.Persistence.Migrations
                     b.HasIndex("FileId")
                         .IsUnique();
 
-                    b.ToTable("content_file_metadata", (string)null);
+                    b.ToTable("content_file_metadata", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_content_file_metadata_object", "jsonb_typeof(metadata_json) = 'object'");
+                        });
                 });
 
             modelBuilder.Entity("RevEx.Domain.Entities.ContentStatus", b =>
@@ -319,14 +336,18 @@ namespace RevEx.Infrastructure.Persistence.Migrations
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("citext")
                         .HasColumnName("name");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
+                        .IsConcurrencyToken()
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
 
                     b.ToTable("content_statuses", (string)null);
                 });
@@ -366,8 +387,8 @@ namespace RevEx.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
                         .HasColumnName("name");
 
                     b.Property<int>("Platform")
@@ -385,6 +406,7 @@ namespace RevEx.Infrastructure.Persistence.Migrations
                         .HasColumnName("status");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
+                        .IsConcurrencyToken()
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
@@ -399,7 +421,12 @@ namespace RevEx.Infrastructure.Persistence.Migrations
                     b.HasIndex("Vid")
                         .IsUnique();
 
-                    b.ToTable("content_versions", (string)null);
+                    b.ToTable("content_versions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_content_versions_platform", "platform BETWEEN 0 AND 2");
+
+                            t.HasCheckConstraint("ck_content_versions_publish_status", "publish_status BETWEEN 0 AND 2");
+                        });
                 });
 
             modelBuilder.Entity("RevEx.Domain.Entities.Tag", b =>
@@ -417,8 +444,8 @@ namespace RevEx.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)")
+                        .HasMaxLength(100)
+                        .HasColumnType("citext")
                         .HasColumnName("name");
 
                     b.Property<int>("TagGroupId")
@@ -426,10 +453,14 @@ namespace RevEx.Infrastructure.Persistence.Migrations
                         .HasColumnName("tag_group_id");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
+                        .IsConcurrencyToken()
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
 
                     b.HasIndex("TagGroupId");
 
@@ -451,15 +482,19 @@ namespace RevEx.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)")
+                        .HasMaxLength(100)
+                        .HasColumnType("citext")
                         .HasColumnName("name");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
+                        .IsConcurrencyToken()
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
 
                     b.ToTable("tag_groups", (string)null);
                 });

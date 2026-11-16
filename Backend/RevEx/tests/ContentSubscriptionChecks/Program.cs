@@ -30,26 +30,29 @@ try
     var connection = new NpgsqlConnectionStringBuilder(settings) { SearchPath = schema }.ConnectionString;
     var producerOptions = Options.Create(new KafkaOptions
     {
-        BootstrapServers = kafka, Topic = topic
+        BootstrapServers = kafka,
+        Topic = topic
     });
     await using var outbox = new KafkaOutboxStore(
-        Options.Create(new ContentHistoryOptions { ConnectionString = connection }));
+        Options.Create(new DatabaseOptions { ConnectionString = connection }));
     await using (var db = new PostgresContextFactory(
-        Options.Create(new ContentHistoryOptions { ConnectionString = connection })).Create())
+        Options.Create(new DatabaseOptions { ConnectionString = connection })).Create())
         await db.Database.MigrateAsync();
     using var producer = new KafkaProducer(producerOptions, outbox);
     var publisher = new ContentChangePublisher(producerOptions, producer);
     await using var implementation = new PostgresContentHistoryStore(
-        Options.Create(new ContentHistoryOptions { ConnectionString = connection }), publisher);
+        Options.Create(new DatabaseOptions { ConnectionString = connection }), publisher);
     IContentHistoryStore history = implementation;
     var sender = new RecordingNotifications();
     var subscriptions = new ContentSubscriptions(
-        Options.Create(new ContentHistoryOptions { ConnectionString = connection }));
+        Options.Create(new DatabaseOptions { ConnectionString = connection }));
     var handler = new ContentChangeHandler(new ContentNotificationService(
-        new PostgresNotificationDeliveryStore(Options.Create(new ContentHistoryOptions { ConnectionString = connection })), sender));
+        new PostgresNotificationDeliveryStore(Options.Create(new DatabaseOptions { ConnectionString = connection })), sender));
     var consumerOptions = Options.Create(new ContentChangeConsumerOptions
     {
-        BootstrapServers = kafka, Topic = topic, NotificationGroupId = "checks-" + suffix
+        BootstrapServers = kafka,
+        Topic = topic,
+        NotificationGroupId = "checks-" + suffix
     });
     using var consumer = new KafkaContentNotificationConsumer(
         consumerOptions, handler, NullLogger<KafkaContentNotificationConsumer>.Instance);
@@ -63,7 +66,11 @@ try
         while (true)
         {
             await using var query = db.CreateCommand("SELECT count(*) FROM content_notification_deliveries");
-            if ((long)(await query.ExecuteScalarAsync(deadline.Token))! == expected) return;
+            if ((long)(await query.ExecuteScalarAsync(deadline.Token))! == expected)
+            {
+                return;
+            }
+
             await Task.Delay(50, deadline.Token);
         }
     }
@@ -99,21 +106,32 @@ try
         await WaitUntil(() => sender.Failures > 0);
         await WaitUntil(() => sender.Sent.Count == 5);
         Check(sender.Sent.Count == 5, "SMTP failure is retried from the pending Kafka message.");
-        using var offsetReader = new ConsumerBuilder<string,string>(new ConsumerConfig
+        using var offsetReader = new ConsumerBuilder<string, string>(new ConsumerConfig
         {
-            BootstrapServers = kafka, GroupId = consumerOptions.Value.NotificationGroupId
+            BootstrapServers = kafka,
+            GroupId = consumerOptions.Value.NotificationGroupId
         }).Build();
         await WaitUntil(() => offsetReader.Committed([new TopicPartition(topic, 0)], TimeSpan.FromSeconds(5))
             .Single().Offset.Value == 3);
         Check(true, "Consumer commits Kafka offsets after successful delivery.");
 
         var count = sender.Sent.Count;
-        try { await consumer.ProcessAsync("{}", default); throw new Exception("Invalid event accepted"); }
-        catch (JsonException) { }
+        try
+        {
+            await consumer.ProcessAsync("{}", default);
+            throw new Exception("Invalid event accepted");
+        }
+        catch (JsonException)
+        {
+        }
+
         Check(sender.Sent.Count == count, "Malformed event sends no email.");
         Check((await history.GetByContentIdAsync(991)).Count == 3, "All changes remain in history.");
     }
-    finally { await consumer.StopAsync(default); }
+    finally
+    {
+        await consumer.StopAsync(default);
+    }
 }
 finally
 {
@@ -124,11 +142,19 @@ finally
 
 static void Check(bool condition, string message)
 {
-    if (!condition) throw new Exception(message);
+    if (!condition)
+    {
+        throw new Exception(message);
+    }
+
     Console.WriteLine("PASS: " + message);
 }
+
 static async Task WaitUntil(Func<bool> condition)
 {
     using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(45));
-    while (!condition()) await Task.Delay(100, deadline.Token);
+    while (!condition())
+    {
+        await Task.Delay(100, deadline.Token);
+    }
 }

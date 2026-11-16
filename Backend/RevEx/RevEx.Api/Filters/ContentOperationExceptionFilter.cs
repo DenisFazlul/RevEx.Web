@@ -3,13 +3,25 @@ using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using RevEx.Application.Content;
+using RevEx.Application.Abstractions.Persistence;
 namespace RevEx.Api.Filters;
 
 public sealed class ContentOperationExceptionFilter(ProblemDetailsFactory problemDetails) : IExceptionFilter
 {
     public void OnException(ExceptionContext context)
     {
-        if (context.Exception is not ContentOperationException error) return;
+        if (context.Exception is PersistenceConflictException persistenceConflict)
+        {
+            context.Result = new ConflictObjectResult(new { message = persistenceConflict.Message });
+            context.ExceptionHandled = true;
+            return;
+        }
+
+        if (context.Exception is not ContentOperationException error)
+        {
+            return;
+        }
+
         context.Result = error.Failure switch
         {
             ContentFailure.NotFound => error.Detail is null ? new NotFoundResult() : new NotFoundObjectResult(new { message = error.Detail }),

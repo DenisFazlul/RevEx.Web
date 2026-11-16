@@ -13,8 +13,12 @@ public static class DatabaseServiceCollectionExtensions
         IConfiguration configuration)
     {
         services.AddScoped<RevEx.Application.Comments.ICommentStore, PostgresCommentStore>();
-        services.Configure<ContentHistoryOptions>(
-            configuration.GetRequiredSection(ContentHistoryOptions.SectionName));
+        services.AddOptions<DatabaseOptions>()
+            .Bind(configuration.GetRequiredSection(DatabaseOptions.SectionName))
+            .Validate(
+                options => IsValidConnectionString(options.ConnectionString),
+                "Database:ConnectionString must contain Host, Database and Username.")
+            .ValidateOnStart();
         services.AddSingleton<PostgresContextFactory>();
         services.AddScoped<PostgresDbContext>(sp => sp.GetRequiredService<PostgresContextFactory>().Create());
         services.AddSingleton<IContentHistoryStore, PostgresContentHistoryStore>();
@@ -29,5 +33,25 @@ public static class DatabaseServiceCollectionExtensions
         services.AddHostedService<KafkaOutboxDispatcher>();
         services.AddSingleton<ContentChangePublisher>();
         return services;
+    }
+
+    private static bool IsValidConnectionString(string connectionString)
+    {
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            return false;
+        }
+
+        try
+        {
+            var settings = new Npgsql.NpgsqlConnectionStringBuilder(connectionString);
+            return !string.IsNullOrWhiteSpace(settings.Host) &&
+                !string.IsNullOrWhiteSpace(settings.Database) &&
+                !string.IsNullOrWhiteSpace(settings.Username);
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
     }
 }
