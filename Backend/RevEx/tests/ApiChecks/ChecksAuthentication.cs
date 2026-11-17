@@ -18,6 +18,15 @@ using RevEx.Infrastructure.Storage;
 sealed class ChecksAuthentication(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
-    protected override Task<AuthenticateResult> HandleAuthenticateAsync() => Task.FromResult(AuthenticateResult.Success(
-        new AuthenticationTicket(new ClaimsPrincipal(new ClaimsIdentity([new Claim("preferred_username", "checks")], "Checks")), "Checks")));
+    protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+    {
+        var role = Request.Headers.ContainsKey("X-Check-Moderator")
+            ? RevEx.Domain.Security.RevExRoles.Moderator
+            : RevEx.Domain.Security.RevExRoles.Administrator;
+        var identity = new ClaimsIdentity(
+            [new Claim("preferred_username", "checks"), new Claim(ClaimTypes.Role, role)],
+            "Checks");
+        var ticket = new AuthenticationTicket(new ClaimsPrincipal(identity), "Checks");
+        return Task.FromResult(AuthenticateResult.Success(ticket));
+    }
 }

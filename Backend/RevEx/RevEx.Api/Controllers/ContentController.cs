@@ -27,6 +27,33 @@ public sealed class ContentController(ContentService service) : ControllerBase
         return Ok(await service.Query(query, cancellationToken));
     }
 
+    [HttpGet("pages")]
+    [ProducesResponseType<ContentPage>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<ContentPage>> GetPage(
+        [FromQuery] ContentQueryDto filters,
+        CancellationToken cancellationToken,
+        [FromQuery] int page = 1)
+    {
+        const int pageSize = 30;
+        if (page < 1 || page > int.MaxValue / pageSize + 1)
+        {
+            return BadRequest("Page is outside the supported range.");
+        }
+
+        var query = new ContentQueryDto
+        {
+            Offset = (page - 1) * pageSize,
+            Limit = pageSize + 1,
+            Cid = filters.Cid,
+            CategoryIds = filters.CategoryIds,
+            TagIds = filters.TagIds,
+            Name = filters.Name
+        };
+        var results = await service.Query(query, cancellationToken);
+        var items = results.Take(pageSize).ToArray();
+        return Ok(new ContentPage(items, page, pageSize, results.Count > pageSize));
+    }
+
     [HttpGet("{id:int}")]
     [ProducesResponseType<ContentDto>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -59,6 +86,14 @@ public sealed class ContentController(ContentService service) : ControllerBase
         CancellationToken cancellationToken)
     {
         await service.Update(id, request, cancellationToken);
+        return NoContent();
+    }
+
+    [HttpPut("{id:int}/freeze")]
+    [Authorize(Policy = RevExPolicies.AdministerCatalog)]
+    public async Task<IActionResult> SetFrozen(int id, [FromBody] bool isFrozen, CancellationToken cancellationToken)
+    {
+        await service.SetFrozen(id, isFrozen, cancellationToken);
         return NoContent();
     }
 

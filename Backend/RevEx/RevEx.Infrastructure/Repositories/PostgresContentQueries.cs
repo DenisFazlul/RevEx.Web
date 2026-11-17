@@ -55,7 +55,10 @@ public sealed class PostgresContentQueries(PostgresDbContext context) : IContent
                 entity.PreviewFileId,
                 entity.Tags.Select(tag => tag.Id).ToArray(),
                 entity.CreatedAt,
-                entity.UpdatedAt))
+                entity.UpdatedAt)
+            {
+                IsFrozen = entity.IsFrozen
+            })
             .ToArray();
         return result;
     }

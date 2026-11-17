@@ -104,12 +104,26 @@ public static class PostgresModel
         model.Entity<Tag>().ToTable("tags");
         model.Entity<Tag>().Property(entity => entity.Id).UseIdentityByDefaultColumn();
         model.Entity<Tag>().Property(entity => entity.Name).HasColumnType("citext").HasMaxLength(100);
+        model.Entity<Tag>().Property(entity => entity.Color).HasMaxLength(7).HasDefaultValue(Tag.DefaultColor);
         model.Entity<Tag>().HasIndex(entity => entity.Name).IsUnique();
         model.Entity<Tag>()
             .HasOne(entity => entity.TagGroup)
             .WithMany(entity => entity.Tags)
             .HasForeignKey(entity => entity.TagGroupId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        model.Entity<ContentParameter>(entity =>
+        {
+            entity.ToTable("content_parameters");
+            entity.HasKey(parameter => parameter.Id);
+            entity.Property(parameter => parameter.Id).UseIdentityByDefaultColumn();
+            entity.Property(parameter => parameter.Name).HasMaxLength(200);
+            entity.Property(parameter => parameter.Kind).HasMaxLength(16);
+            entity.Property(parameter => parameter.Value).HasMaxLength(4000);
+            entity.Property(parameter => parameter.Help).HasMaxLength(1000);
+            entity.HasOne<Content>().WithMany().HasForeignKey(parameter => parameter.ContentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
 
         model.Entity<Content>().ToTable("contents");
         model.Entity<Content>().Property(entity => entity.Id).UseIdentityByDefaultColumn();

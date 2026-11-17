@@ -149,7 +149,10 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
             foreach (var request in requests)
             {
                 var file = await AddFileToVersion(version, request, cancellationToken);
-                version.Files.Add(file);
+                if (!version.Files.Contains(file))
+                {
+                    version.Files.Add(file);
+                }
                 createdFiles.Add(file);
             }
 
@@ -184,42 +187,17 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
         VersionFileUpload request,
         CancellationToken cancellationToken)
     {
-        if (request.Length == 0 || request.Length > MaximumFileSizeBytes)
+        Guid? cid = null;
+        if (version.Platform == Platform.Revit && version.Vid.HasValue && string.Equals(request.Role.Trim(), "primary", StringComparison.OrdinalIgnoreCase))
         {
-            throw new ContentOperationException(ContentFailure.BadRequest, "The uploaded file must be between 1 byte and 100 MB.");
+            var content = await contentRepository.GetByIdAsync(version.ContentId, cancellationToken);
+            cid = content?.Cid;
         }
 
-        var role = request.Role.Trim().ToLowerInvariant();
-        var originalFileName = Path.GetFileName(request.FileName);
-        var extension = Path.GetExtension(originalFileName).ToLowerInvariant();
-        if (string.IsNullOrWhiteSpace(originalFileName) ||
-            (role != "primary" && role != "attachment" &&
-             (!AllowedExtensionsByRole.TryGetValue(role, out var allowedExtensions) ||
-              !allowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))))
-        {
-            throw new ContentOperationException(ContentFailure.BadRequest, "The file extension is not allowed for the selected file role.");
-        }
-
+        var (role, originalFileName, extension, metadataJson) = ValidateUpload(request, version.Platform, cid, version.Vid);
         if (role == "primary" && version.Files.Any(item => item.Role == "primary"))
         {
             throw new ContentOperationException(ContentFailure.Conflict, "This content version already has a primary file.");
-        }
-
-        var metadataJson = ValidateMetadata(request.MetadataJson);
-        if (role == "primary" && version.Vid is Guid vid)
-        {
-            var content = await contentRepository.GetByIdAsync(version.ContentId, cancellationToken);
-            if (content is null || extension != ".rfa" || metadataJson is null)
-            {
-                throw new ContentOperationException(ContentFailure.Validation, "A version with VID requires an RFA with CID and VID metadata.");
-            }
-
-            using var metadata = JsonDocument.Parse(metadataJson);
-            if (!MatchesIdentifier(metadata.RootElement, "CID", content.Cid) ||
-                !MatchesIdentifier(metadata.RootElement, "VID", vid))
-            {
-                throw new ContentOperationException(ContentFailure.Conflict, "RFA metadata CID or VID does not match the catalog.");
-            }
         }
 
         var file = new ContentFile
@@ -250,6 +228,44 @@ public sealed class ContentVersionsService(RevEx.Application.Abstractions.Identi
         }
 
         return file;
+    }
+
+    internal static (string Role, string FileName, string Extension, string? MetadataJson) ValidateUpload(
+        VersionFileUpload request, Platform platform, Guid? cid, Guid? vid)
+    {
+        if (request.Length == 0 || request.Length > MaximumFileSizeBytes)
+        {
+            throw new ContentOperationException(ContentFailure.BadRequest, "The uploaded file must be between 1 byte and 100 MB.");
+        }
+
+        var role = request.Role.Trim().ToLowerInvariant();
+        var originalFileName = Path.GetFileName(request.FileName);
+        var extension = Path.GetExtension(originalFileName).ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(originalFileName) ||
+            (role != "primary" && role != "attachment" &&
+             (!AllowedExtensionsByRole.TryGetValue(role, out var allowedExtensions) ||
+              !allowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))))
+        {
+            throw new ContentOperationException(ContentFailure.BadRequest, "The file extension is not allowed for the selected file role.");
+        }
+
+        var metadataJson = ValidateMetadata(request.MetadataJson);
+        if (role == "primary" && platform == Platform.Revit && vid is Guid versionId)
+        {
+            if (cid is null || extension != ".rfa" || metadataJson is null)
+            {
+                throw new ContentOperationException(ContentFailure.Validation, "A version with VID requires an RFA with CID and VID metadata.");
+            }
+
+            using var metadata = JsonDocument.Parse(metadataJson);
+            if (!MatchesIdentifier(metadata.RootElement, "CID", cid.Value) ||
+                !MatchesIdentifier(metadata.RootElement, "VID", versionId))
+            {
+                throw new ContentOperationException(ContentFailure.Conflict, "RFA metadata CID or VID does not match the catalog.");
+            }
+        }
+
+        return (role, originalFileName, extension, metadataJson);
     }
 
     private async Task DeleteFileIgnoringMissing(

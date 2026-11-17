@@ -39,6 +39,7 @@ services:
     command:
       - |
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server "$$KAFKA_BOOTSTRAP_SERVERS" --create --if-not-exists --topic "$$KAFKA_TOPIC" --partitions 1 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server "$$KAFKA_BOOTSTRAP_SERVERS" --create --if-not-exists --topic revex.backend.errors --partitions 1 --replication-factor 1
         /opt/kafka/bin/kafka-configs.sh --bootstrap-server "$$KAFKA_BOOTSTRAP_SERVERS" --entity-type topics --entity-name "$$KAFKA_TOPIC" --alter --add-config "retention.ms=$$KAFKA_RETENTION_MS,cleanup.policy=delete,segment.ms=3600000,retention.bytes=-1"
 
   postgres:
@@ -85,6 +86,7 @@ services:
     environment:
       Kafka__BootstrapServers: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
       Kafka__Topic: ${KAFKA_TOPIC:-content-changes}
+      Kafka__ErrorQueuePath: /app/storage/error-queue
       Kafka__NotificationGroupId: ${KAFKA_NOTIFICATION_GROUP_ID:-revex-content-notifications}
       NotificationService__Host: "${SMTP_HOST:-localhost}"
       NotificationService__Port: "${SMTP_PORT:-587}"
@@ -107,6 +109,7 @@ services:
     volumes:
       - revex-files:/app/storage/files
       - desktop-releases:/app/storage/desktop-releases
+      - backend-error-queue:/app/storage/error-queue
     depends_on:
       kafka-init:
         condition: service_completed_successfully
@@ -130,3 +133,4 @@ volumes:
   postgres-data:
   revex-files:
   desktop-releases:
+  backend-error-queue:

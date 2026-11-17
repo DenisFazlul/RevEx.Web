@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.OpenApi.Models;
 
 namespace RevEx.Api.Extensions;
@@ -6,18 +8,34 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddApiControllers(this IServiceCollection services)
     {
-        services.AddControllers(options => options.Filters.Add<RevEx.Api.Filters.ContentOperationExceptionFilter>());
+        services.AddControllers(options => options.Filters.Add<RevEx.Api.Filters.ContentOperationExceptionFilter>())
+            .ConfigureApiBehaviorOptions(options =>
+            {
+                options.InvalidModelStateResponseFactory = context =>
+                {
+                    var factory = context.HttpContext.RequestServices.GetRequiredService<ProblemDetailsFactory>();
+                    var problem = factory.CreateValidationProblemDetails(context.HttpContext, context.ModelState,
+                        detail: "Проверьте обязательные поля и формат введённых данных.");
+                    problem.Extensions["kind"] = "controlled";
+                    problem.Extensions["code"] = "request.invalid";
+                    return new BadRequestObjectResult(problem)
+                    {
+                        ContentTypes = { "application/problem+json" }
+                    };
+                };
+            });
         services.AddHttpContextAccessor();
         services.AddScoped<RevEx.Application.Catalog.ContentFilesService>();
         services.AddScoped<RevEx.Application.Subscriptions.ContentSubscriptionService>();
         services.AddScoped<RevEx.Application.Abstractions.Identity.ICurrentUser, RevEx.Api.Authorization.HttpCurrentUser>();
         services.AddScoped<RevEx.Application.Content.ContentService>();
+        services.AddScoped<RevEx.Application.Content.ContentParameterService>();
         services.AddScoped<RevEx.Application.Catalog.CategoriesService>();
         services.AddScoped<RevEx.Application.Catalog.ContentStatusesService>();
         services.AddScoped<RevEx.Application.Catalog.TagsService>();
         services.AddScoped<RevEx.Application.Catalog.TagGroupsService>();
         services.AddScoped<RevEx.Application.Catalog.ContentVersionsService>();
-        services.AddScoped<RevEx.Application.Catalog.RfaImportsService>();
+        services.AddScoped<RevEx.Application.Catalog.VersionImportsService>();
         services.AddScoped<RevEx.Application.Catalog.ContentHistoryService>();
         return services;
     }

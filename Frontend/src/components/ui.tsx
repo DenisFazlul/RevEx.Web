@@ -1,9 +1,9 @@
-import { BookOpen, Home, Settings } from 'lucide-react'
+import { Home, Settings } from 'lucide-react'
 
 export type AppTab = 'home' | 'admin'
 
 export function Brand() {
-  return <span className="brand"><span className="brand-mark"><BookOpen size={19}/></span><span>REVEX</span></span>
+  return <span className="brand"><img className="brand-mark" src="/revex-logo.png" width="34" height="34" alt="" /><span>REVEX</span></span>
 }
 
 export function AppNavigation({ active, onChange }: { active: AppTab; onChange: (tab: AppTab) => void }) {

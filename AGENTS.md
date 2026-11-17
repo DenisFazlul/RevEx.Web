@@ -40,6 +40,8 @@ dotnet run --project RevEx.Api/RevEx.Api.csproj
 
 ## Frontend
 
+Use the shared RevEx design code in `../AGENTS.md` for Frontend and the Keycloak theme.
+
 - Entry: `Frontend/src/main.tsx`.
 - State and pathname-based navigation: `Frontend/src/App.tsx`.
 - API types and requests: `Frontend/src/api.ts`.
@@ -95,7 +97,7 @@ Do not use that assumption for a future persistent or production Keycloak databa
 
 ## Verification
 
-- Backend change: build the backend solution.
+- Backend change: build the backend solution, then rebuild the image and recreate the API container from the repository root with `docker compose up -d --build --force-recreate revex-api`. Verify startup with `docker compose ps revex-api` and `docker compose logs --tail=100 revex-api`.
 - Frontend change: run the frontend production build.
 - Contract change: build every affected client and server.
 - Keycloak/theme change: validate Compose/JSON, restart Keycloak, request a real OIDC

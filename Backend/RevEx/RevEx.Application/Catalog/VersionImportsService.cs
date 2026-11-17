@@ -7,17 +7,24 @@ using RevEx.Domain.Identifiers;
 
 namespace RevEx.Application.Catalog;
 
-public sealed class RfaImportsService(
+public sealed class VersionImportsService(
     IContentRepository contentRepository,
     IContentVersionRepository versionRepository,
     ContentService contentService,
     ContentVersionsService versionsService)
 {
     public async Task<ContentVersionDto> Import(
-        RfaImportRequest request,
+        VersionImportRequest request,
         CancellationToken cancellationToken)
     {
         Validate(request);
+        var requestedFiles = new[] { request.PrimaryFile }
+            .Concat(request.AuxiliaryFiles.Select(ToVersionFileUpload))
+            .ToArray();
+        foreach (var file in requestedFiles)
+        {
+            ContentVersionsService.ValidateUpload(file, request.Platform, request.Cid, request.Vid);
+        }
 
         var content = await contentRepository.GetByCidAsync(request.Cid, cancellationToken);
         if (content is null)
@@ -43,11 +50,11 @@ public sealed class RfaImportsService(
         }
 
         var version = await versionRepository.GetByVidAsync(request.Vid, cancellationToken);
-        if (version is not null && version.ContentId != content.Id)
+        if (version is not null && (version.ContentId != content.Id || version.Platform != request.Platform))
         {
             throw new ContentOperationException(
                 ContentFailure.Conflict,
-                $"Version with VID {request.Vid:D} already exists for another content item.");
+                $"VID {request.Vid:D} is already assigned to a different content item or platform.");
         }
 
         ContentVersionDto result;
@@ -63,8 +70,8 @@ public sealed class RfaImportsService(
                     Date = request.Date,
                     Status = "draft",
                     PublishStatus = PublishStatus.Draft,
-                    Application = "revit",
-                    Platform = Platform.Revit,
+                    Application = request.Application,
+                    Platform = request.Platform,
                     ApplicationVersion = request.ApplicationVersion
                 },
                 cancellationToken);
@@ -86,26 +93,14 @@ public sealed class RfaImportsService(
         var knownFiles = current.Files
             .Select(file => $"{file.Role}\0{file.OriginalFileName}")
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        foreach (var auxiliaryFile in request.AuxiliaryFiles)
+        foreach (var upload in requestedFiles.Skip(1))
         {
-            var role = string.Equals(
-                Path.GetExtension(auxiliaryFile.FileName),
-                ".csv",
-                StringComparison.OrdinalIgnoreCase)
-                ? "lookup-table"
-                : "attachment";
-            var originalFileName = Path.GetFileName(auxiliaryFile.FileName);
-            if (!knownFiles.Add($"{role}\0{originalFileName}"))
+            var originalFileName = Path.GetFileName(upload.FileName);
+            if (!knownFiles.Add($"{upload.Role}\0{originalFileName}"))
             {
                 continue;
             }
 
-            var upload = new VersionFileUpload(
-                auxiliaryFile.FileName,
-                auxiliaryFile.Length,
-                auxiliaryFile.OpenReadStream,
-                role,
-                null);
             uploads.Add(upload);
         }
 
@@ -117,7 +112,15 @@ public sealed class RfaImportsService(
         return result;
     }
 
-    private static void Validate(RfaImportRequest request)
+    private static VersionFileUpload ToVersionFileUpload(VersionImportAuxiliaryUpload file)
+    {
+        var role = string.Equals(Path.GetExtension(file.FileName), ".csv", StringComparison.OrdinalIgnoreCase)
+            ? "lookup-table"
+            : "attachment";
+        return new VersionFileUpload(file.FileName, file.Length, file.OpenReadStream, role, file.MetadataJson);
+    }
+
+    private static void Validate(VersionImportRequest request)
     {
         if (!Uuid7.IsValid(request.Cid) || !Uuid7.IsValid(request.Vid))
         {
@@ -153,7 +156,7 @@ public sealed class RfaImportsService(
     }
 }
 
-public sealed record RfaImportRequest(
+public sealed record VersionImportRequest(
     Guid Cid,
     Guid Vid,
     string ContentName,
@@ -163,9 +166,12 @@ public sealed record RfaImportRequest(
     DateTimeOffset Date,
     string ApplicationVersion,
     VersionFileUpload PrimaryFile,
-    IReadOnlyCollection<RfaAuxiliaryFileUpload> AuxiliaryFiles);
+    IReadOnlyCollection<VersionImportAuxiliaryUpload> AuxiliaryFiles,
+    Platform Platform,
+    string Application);
 
-public sealed record RfaAuxiliaryFileUpload(
+public sealed record VersionImportAuxiliaryUpload(
     string FileName,
     long Length,
-    Func<Stream> OpenReadStream);
+    Func<Stream> OpenReadStream,
+    string? MetadataJson);

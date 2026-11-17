@@ -4,6 +4,8 @@ namespace RevEx.Application.Abstractions.Persistence;
 
 public interface IContentRepository : IRepository<ContentEntity>
 {
+    Task<bool> SetFrozenAsync(int id, bool isFrozen, CancellationToken token);
+
     Task<ContentEntity?> GetByCidAsync(Guid cid, CancellationToken token);
 
     Task<bool> AnyWithCategoryIdAsync(int categoryId, CancellationToken token);

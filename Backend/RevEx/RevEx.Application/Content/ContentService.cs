@@ -43,6 +43,14 @@ public sealed class ContentService(
         return entity is null ? throw new ContentOperationException(ContentFailure.NotFound) : Map(entity);
     }
 
+    public async Task SetFrozen(int id, bool isFrozen, CancellationToken cancellationToken)
+    {
+        if (!await repository.SetFrozenAsync(id, isFrozen, cancellationToken))
+        {
+            throw new ContentOperationException(ContentFailure.NotFound);
+        }
+    }
+
     public async Task<ContentDto> Create(
         CreateContentDto request,
         CancellationToken cancellationToken)
@@ -55,12 +63,12 @@ public sealed class ContentService(
 
         if (await repository.GetByCidAsync(cid, cancellationToken) is not null)
         {
-            throw new ContentOperationException(ContentFailure.Conflict, $"Content with CID {request.Cid:D} already exists.");
+            throw new ContentOperationException(ContentFailure.Conflict, "Контент с таким идентификатором уже существует. Обновите каталог.");
         }
 
         if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Description))
         {
-            throw new ContentOperationException(ContentFailure.Validation, "Name and Description must not be empty.");
+            throw new ContentOperationException(ContentFailure.Validation, "Укажите название и описание контента.");
         }
 
         var category = await categoryRepository.GetByIdAsync(request.CategoryId, cancellationToken);
@@ -115,7 +123,7 @@ public sealed class ContentService(
     {
         if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Description))
         {
-            throw new ContentOperationException(ContentFailure.Validation, "Name and Description must not be empty.");
+            throw new ContentOperationException(ContentFailure.Validation, "Укажите название и описание контента.");
         }
 
         var entity = await repository.GetByIdAsync(id, cancellationToken);
@@ -248,7 +256,7 @@ public sealed class ContentService(
 
         if (!PreviewUpload.IsSupported(request))
         {
-            throw new ContentOperationException(ContentFailure.BadRequest, "Preview must be a JPEG, PNG, WebP or GIF image no larger than 10 MB.");
+            throw new ContentOperationException(ContentFailure.BadRequest, "Выберите изображение JPEG, PNG, WebP или GIF размером до 10 МБ.");
         }
 
         var oldFileId = entity.PreviewFileId;
@@ -430,5 +438,8 @@ public sealed class ContentService(
             entity.PreviewFileId,
             entity.Tags.Select(tag => tag.Id).ToArray(),
             entity.CreatedAt,
-            entity.UpdatedAt);
+            entity.UpdatedAt)
+        {
+            IsFrozen = entity.IsFrozen
+        };
 }

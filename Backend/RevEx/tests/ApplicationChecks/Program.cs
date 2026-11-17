@@ -86,4 +86,25 @@ var createdVersion = await versionService.Create(versionRequest, default);
 var retriedVersion = await versionService.Create(versionRequest, default);
 Check(createdVersion.Vid == vid && retriedVersion.Id == createdVersion.Id && versions.Items.Count == 1);
 
+storage.Fail = false;
+var drawing = new VersionFileUpload("drawing.dwg", 1, () => new MemoryStream(new byte[] { 1 }), "primary", "{}");
+await Failure(() => versionService.AddFile(createdVersion.Id, drawing, default), ContentFailure.Validation);
+
+foreach (var (platform, fileName) in new[] { (Platform.AutoCad, "drawing.dwg"), (Platform.Other, "notes.txt") })
+{
+    var version = await versionService.Create(new CreateContentVersionDto
+    {
+        ContentId = created.Id,
+        Cid = created.Cid,
+        Vid = Uuid7.Create(),
+        Platform = platform,
+        Application = "file",
+        ApplicationVersion = "2026"
+    }, default);
+
+    var upload = new VersionFileUpload(fileName, 1, () => new MemoryStream(new byte[] { 1 }), "primary", "{}");
+    var result = await versionService.AddFile(version.Id, upload, default);
+    Check(result.Vid == version.Vid && result.FileIds.Count == 1);
+}
+
 Console.WriteLine("Application checks passed: validation, creation, CID/VID matching, idempotency, history author, query delegation, preview cleanup.");

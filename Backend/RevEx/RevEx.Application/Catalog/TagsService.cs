@@ -43,6 +43,7 @@ public sealed class TagsService(
         }
 
         var entity = new Tag { Name = name, TagGroupId = request.TagGroupId };
+        entity.Color = NormalizeColor(request.Color) ?? Tag.DefaultColor;
         await repository.AddAsync(entity, cancellationToken);
 
         return Map(entity);
@@ -73,6 +74,7 @@ public sealed class TagsService(
 
         entity.Name = name;
         entity.TagGroupId = request.TagGroupId;
+        entity.Color = NormalizeColor(request.Color) ?? entity.Color;
         await repository.UpdateAsync(entity, cancellationToken);
 
         return;
@@ -97,7 +99,17 @@ public sealed class TagsService(
         return await repository.NameExistsAsync(name, excludedId, cancellationToken);
     }
 
+    private static string? NormalizeColor(string? color)
+    {
+        if (color is not null && (color.Length != 7 || color[0] != '#' || !color.Skip(1).All(Uri.IsHexDigit)))
+        {
+            throw new ContentOperationException(ContentFailure.Validation, "Color must use the #RRGGBB format.");
+        }
+
+        return color?.ToUpperInvariant();
+    }
+
     private static TagDto Map(Tag entity) =>
         new(entity.Id, entity.Name, entity.TagGroupId, entity.TagGroup?.Name ?? string.Empty,
-            entity.CreatedAt, entity.UpdatedAt);
+            entity.CreatedAt, entity.UpdatedAt, entity.Color);
 }

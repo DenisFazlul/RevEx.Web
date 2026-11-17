@@ -8,8 +8,8 @@ using RevEx.Domain.Contracts.ContentVersion;
 namespace RevEx.Api.Controllers;
 
 [ApiController]
-[Route("api/imports/rfa")]
-public sealed class RfaImportsController(RfaImportsService service) : ControllerBase
+[Route("api/imports/versions")]
+public sealed class VersionImportsController(VersionImportsService service) : ControllerBase
 {
     [HttpPost]
     [RequestSizeLimit(550 * 1024 * 1024)]
@@ -20,7 +20,7 @@ public sealed class RfaImportsController(RfaImportsService service) : Controller
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult<ContentVersionDto>> Import(
-        [FromForm] RfaImportForm form,
+        [FromForm] VersionImportForm form,
         CancellationToken cancellationToken)
     {
         var primaryFile = new VersionFileUpload(
@@ -30,9 +30,10 @@ public sealed class RfaImportsController(RfaImportsService service) : Controller
             "primary",
             form.MetadataJson);
         var auxiliaryFiles = form.AuxiliaryFiles
-            .Select(file => new RfaAuxiliaryFileUpload(file.FileName, file.Length, file.OpenReadStream))
+            .Select((file, index) => new VersionImportAuxiliaryUpload(
+                file.FileName, file.Length, file.OpenReadStream, form.AuxiliaryMetadataJson.GetValueOrDefault(index)))
             .ToArray();
-        var request = new RfaImportRequest(
+        var request = new VersionImportRequest(
             form.Cid,
             form.Vid,
             form.ContentName,
@@ -42,7 +43,9 @@ public sealed class RfaImportsController(RfaImportsService service) : Controller
             form.Date,
             form.ApplicationVersion,
             primaryFile,
-            auxiliaryFiles);
+            auxiliaryFiles,
+            form.Platform!.Value,
+            form.Application);
 
         var result = await service.Import(request, cancellationToken);
         return Ok(result);

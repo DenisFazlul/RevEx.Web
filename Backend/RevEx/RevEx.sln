@@ -19,6 +19,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ApiChecks", "tests\ApiCheck
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RevEx.Contracts", "..\..\..\RevEx.Domain\src\RevEx.Contracts\RevEx.Contracts.csproj", "{BAFA2647-27DC-4C30-AA57-CEE54DF8F447}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RevEx.Workers", "RevEx.Workers\RevEx.Workers.csproj", "{251C07B2-78E7-410A-8630-1997EE12239A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -113,6 +115,18 @@ Global
 		{BAFA2647-27DC-4C30-AA57-CEE54DF8F447}.Release|x64.Build.0 = Release|Any CPU
 		{BAFA2647-27DC-4C30-AA57-CEE54DF8F447}.Release|x86.ActiveCfg = Release|Any CPU
 		{BAFA2647-27DC-4C30-AA57-CEE54DF8F447}.Release|x86.Build.0 = Release|Any CPU
+		{251C07B2-78E7-410A-8630-1997EE12239A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{251C07B2-78E7-410A-8630-1997EE12239A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{251C07B2-78E7-410A-8630-1997EE12239A}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{251C07B2-78E7-410A-8630-1997EE12239A}.Debug|x64.Build.0 = Debug|Any CPU
+		{251C07B2-78E7-410A-8630-1997EE12239A}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{251C07B2-78E7-410A-8630-1997EE12239A}.Debug|x86.Build.0 = Debug|Any CPU
+		{251C07B2-78E7-410A-8630-1997EE12239A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{251C07B2-78E7-410A-8630-1997EE12239A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{251C07B2-78E7-410A-8630-1997EE12239A}.Release|x64.ActiveCfg = Release|Any CPU
+		{251C07B2-78E7-410A-8630-1997EE12239A}.Release|x64.Build.0 = Release|Any CPU
+		{251C07B2-78E7-410A-8630-1997EE12239A}.Release|x86.ActiveCfg = Release|Any CPU
+		{251C07B2-78E7-410A-8630-1997EE12239A}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

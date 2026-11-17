@@ -1,8 +1,9 @@
 using System.ComponentModel.DataAnnotations;
+using RevEx.Domain.Entities;
 
 namespace RevEx.Api.Models;
 
-public sealed class RfaImportForm
+public sealed class VersionImportForm
 {
     [Required]
     public Guid Cid { get; init; }
@@ -22,6 +23,12 @@ public sealed class RfaImportForm
 
     public DateTimeOffset Date { get; init; }
 
+    [Required, EnumDataType(typeof(Platform))]
+    public Platform? Platform { get; init; }
+
+    [Required, MaxLength(100)]
+    public string Application { get; init; } = string.Empty;
+
     [Required]
     public string ApplicationVersion { get; init; } = string.Empty;
 
@@ -31,5 +38,7 @@ public sealed class RfaImportForm
     [Required]
     public string MetadataJson { get; init; } = string.Empty;
 
-    public IReadOnlyCollection<IFormFile> AuxiliaryFiles { get; init; } = [];
+    public List<IFormFile> AuxiliaryFiles { get; init; } = [];
+
+    public Dictionary<int, string> AuxiliaryMetadataJson { get; init; } = [];
 }

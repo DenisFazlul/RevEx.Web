@@ -25,6 +25,11 @@
 | GET | `/api/content/{id}` | Authenticated |
 | PUT | `/api/content/{id}` | EditContent |
 | DELETE | `/api/content/{id}` | EditContent |
+| GET | `/api/content/{contentId}/parameters` | Authenticated |
+| GET | `/api/content/{contentId}/parameters/{id}` | Authenticated |
+| POST | `/api/content/{contentId}/parameters` | EditContent |
+| PUT | `/api/content/{contentId}/parameters/{id}` | EditContent |
+| DELETE | `/api/content/{contentId}/parameters/{id}` | EditContent |
 | POST | `/api/content/{id}/preview` | EditContent |
 | DELETE | `/api/content/{id}/preview` | EditContent |
 | GET | `/api/content-files` | Authenticated |
@@ -68,7 +73,7 @@
 | GET | `/api/revit-releases/installers` | Public |
 | POST | `/api/revit-releases/{id}/publish` | AdministerCatalog |
 | GET | `/api/revit-releases/{id}/download` | Public |
-| POST | `/api/imports/rfa` | EditContent |
+| POST | `/api/imports/versions` | EditContent |
 | GET | `/api/tag-groups` | Authenticated |
 | POST | `/api/tag-groups` | AdministerCatalog |
 | GET | `/api/tag-groups/{id}` | Authenticated |
@@ -79,3 +84,5 @@
 | GET | `/api/tags/{id}` | Authenticated |
 | PUT | `/api/tags/{id}` | AdministerCatalog |
 | DELETE | `/api/tags/{id}` | AdministerCatalog |
+
+Для параметров контента POST и PUT принимают `name`, `kind`, `value` и необязательный `help` (текст подсказки). `kind` принимает `string`, `number` или `link`. Значение передаётся строкой: число с десятичной точкой, ссылка — абсолютный адрес HTTP или HTTPS. Идентификатор параметра возвращается сервером и используется вместе с идентификатором карточки.

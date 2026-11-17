@@ -11,6 +11,19 @@ sealed class ContentRepository : IContentRepository
     public List<Content> Items { get; } = [];
     public Task<IReadOnlyCollection<Content>> GetAllAsync(CancellationToken token) => Task.FromResult<IReadOnlyCollection<Content>>(Items);
     public Task<Content?> GetByIdAsync(int id, CancellationToken token) => Task.FromResult(Items.FirstOrDefault(x => x.Id == id));
+    public Task<bool> SetFrozenAsync(int id, bool isFrozen, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        var item = Items.FirstOrDefault(content => content.Id == id);
+        if (item is null)
+        {
+            return Task.FromResult(false);
+        }
+
+        item.IsFrozen = isFrozen;
+        return Task.FromResult(true);
+    }
+
     public Task<Content?> GetByCidAsync(Guid cid, CancellationToken token) => Task.FromResult(Items.FirstOrDefault(x => x.Cid == cid));
     public Task<bool> AnyWithCategoryIdAsync(int categoryId, CancellationToken token) =>
         Task.FromResult(Items.Any(item => item.CategoryId == categoryId));

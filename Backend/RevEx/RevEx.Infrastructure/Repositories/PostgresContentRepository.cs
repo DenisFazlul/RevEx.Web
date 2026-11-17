@@ -8,6 +8,14 @@ namespace RevEx.Infrastructure.Repositories;
 public sealed class PostgresContentRepository(PostgresDbContext context)
     : PostgresRepository<Content>(context), IContentRepository
 {
+    public async Task<bool> SetFrozenAsync(int id, bool isFrozen, CancellationToken token)
+    {
+        var affected = await Context.Contents
+            .Where(content => content.Id == id)
+            .ExecuteUpdateAsync(update => update.SetProperty(content => content.IsFrozen, isFrozen), token);
+        return affected != 0;
+    }
+
     public Task<Content?> GetByCidAsync(Guid cid, CancellationToken token)
     {
         return Context.Contents

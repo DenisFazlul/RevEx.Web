@@ -41,6 +41,10 @@ public abstract class PostgresRepository<TEntity>(PostgresDbContext context) : I
         entity.UpdatedAt = DateTimeOffset.UtcNow;
         var entry = Context.Entry(entity);
         entry.State = EntityState.Modified;
+        if (entity is Content)
+        {
+            entry.Property(nameof(Content.IsFrozen)).IsModified = false;
+        }
         entry.Property(item => item.UpdatedAt).OriginalValue = originalUpdatedAt;
         await SaveAsync(token);
     }

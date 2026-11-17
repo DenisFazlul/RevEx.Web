@@ -12,8 +12,8 @@ public sealed class ContentOperationExceptionFilter(ProblemDetailsFactory proble
     {
         if (context.Exception is PersistenceConflictException persistenceConflict)
         {
-            context.Result = new ConflictObjectResult(new { message = persistenceConflict.Message });
-            context.ExceptionHandled = true;
+            SetProblem(context, 409, "persistence.conflict",
+                "Данные конфликтуют с другой записью. Обновите данные и проверьте изменения.", persistenceConflict.Message);
             return;
         }
 
@@ -22,12 +22,29 @@ public sealed class ContentOperationExceptionFilter(ProblemDetailsFactory proble
             return;
         }
 
-        context.Result = error.Failure switch
+        var (status, code, fallback) = error.Failure switch
         {
-            ContentFailure.NotFound => error.Detail is null ? new NotFoundResult() : new NotFoundObjectResult(new { message = error.Detail }),
-            ContentFailure.Conflict => new ConflictObjectResult(new { message = error.Detail }),
-            ContentFailure.BadRequest => new BadRequestObjectResult(new { message = error.Detail }),
-            _ => new BadRequestObjectResult(problemDetails.CreateValidationProblemDetails(context.HttpContext, new ModelStateDictionary(), detail: error.Detail))
+            ContentFailure.NotFound => (404, "content.not_found", "Запись не найдена. Обновите список."),
+            ContentFailure.Conflict => (409, "content.conflict", "Операция конфликтует с текущими данными. Обновите данные."),
+            _ => (400, "content.invalid", "Проверьте введённые данные.")
+        };
+        SetProblem(context, status, code, error.Detail ?? fallback, error.Detail ?? fallback,
+            error.Failure == ContentFailure.Validation);
+    }
+
+    private void SetProblem(ExceptionContext context, int status, string code, string detail, string message,
+        bool isValidation = false)
+    {
+        var problem = isValidation
+            ? problemDetails.CreateValidationProblemDetails(context.HttpContext, new ModelStateDictionary(), status, detail: detail)
+            : problemDetails.CreateProblemDetails(context.HttpContext, status, detail: detail);
+        problem.Extensions["kind"] = "controlled";
+        problem.Extensions["code"] = code;
+        problem.Extensions["message"] = message;
+        context.Result = new ObjectResult(problem)
+        {
+            StatusCode = status,
+            ContentTypes = { "application/problem+json" }
         };
         context.ExceptionHandled = true;
     }

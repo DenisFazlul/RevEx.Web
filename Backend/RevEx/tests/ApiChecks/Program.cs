@@ -7,6 +7,8 @@ using RevEx.Api.Extensions;
 using RevEx.Application.Abstractions.Persistence;
 using RevEx.Application.Abstractions.Storage;
 using RevEx.Domain.Contracts.Content;
+using RevEx.Domain.Contracts.ContentVersion;
+using RevEx.Domain.Entities;
 using RevEx.Domain.Identifiers;
 using RevEx.Infrastructure.Persistence;
 using RevEx.Infrastructure.Repositories;
@@ -37,6 +39,7 @@ builder.Services.AddScoped(_ => new PostgresDbContext(
         .AddInterceptors(commandCounter)
         .Options));
 builder.Services.AddScoped<IContentRepository, PostgresContentRepository>();
+builder.Services.AddScoped<IContentParameterRepository, PostgresContentParameterRepository>();
 builder.Services.AddScoped<IContentFileRepository, PostgresContentFileRepository>();
 builder.Services.AddScoped<IContentFileMetadataRepository, PostgresContentFileMetadataRepository>();
 builder.Services.AddScoped<ITagGroupRepository, PostgresTagGroupRepository>();
@@ -56,7 +59,7 @@ builder.Services
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("EditContent", policy => policy.RequireAuthenticatedUser());
-    options.AddPolicy("AdministerCatalog", policy => policy.RequireAuthenticatedUser());
+    options.AddPolicy("AdministerCatalog", policy => policy.RequireRole(RevEx.Domain.Security.RevExRoles.Administrator));
 });
 
 await using var app = builder.Build();
@@ -101,6 +104,39 @@ try
     var content = await contentResponse.Content.ReadFromJsonAsync<ContentDto>()
         ?? throw new InvalidOperationException("Content response is empty.");
 
+    await VerifyContentFreezeAsync(client, content);
+    await VerifyContentParametersAsync(client, content.Id);
+
+    foreach (var (platform, name) in new[] { (Platform.AutoCad, "drawing.dwg"), (Platform.Other, "notes.txt"), (Platform.Revit, "family.rfa") })
+    {
+        var vid = Uuid7.Create();
+        using var metadata = JsonContent.Create(new { CID = new { Value = content.Cid }, VID = new { Value = vid } });
+        var json = await metadata.ReadAsStringAsync();
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            using var form = new MultipartFormDataContent();
+            form.Add(new StringContent(content.Cid.ToString("D")), "Cid");
+            form.Add(new StringContent(vid.ToString("D")), "Vid");
+            form.Add(new StringContent(content.Name), "ContentName");
+            form.Add(new StringContent("Version import"), "VersionName");
+            form.Add(new StringContent("2026"), "ApplicationVersion");
+            form.Add(new StringContent(platform.ToString()), "Application");
+            form.Add(new StringContent(platform.ToString()), "Platform");
+            form.Add(new StringContent(DateTimeOffset.UtcNow.ToString("O")), "Date");
+            form.Add(new StringContent(json), "MetadataJson");
+            form.Add(new ByteArrayContent([1]), "File", name);
+            form.Add(new StringContent("{}"), "AuxiliaryMetadataJson[0]");
+            form.Add(new ByteArrayContent([2]), "AuxiliaryFiles", "extra.txt");
+            using var response = await client.PostAsync("/api/imports/versions", form);
+            await ExpectAsync(response, HttpStatusCode.OK);
+            var version = await response.Content.ReadFromJsonAsync<ContentVersionDto>();
+            if (version?.Vid != vid || version.Platform != platform || version.FileIds.Count != 2)
+            {
+                throw new InvalidOperationException($"Import for {platform} returned {await response.Content.ReadAsStringAsync()}.");
+            }
+        }
+    }
+
     await VerifyOptimisticConcurrencyAsync(app.Services, content.Id);
     await VerifyFileMetadataTransactionAsync(app.Services);
 
@@ -121,6 +157,36 @@ finally
     await DropSchemaAsync(connectionString, schema);
 }
 
+static async Task VerifyContentParametersAsync(HttpClient client, int contentId)
+{
+    var collection = $"/api/content/{contentId}/parameters";
+    var input = new ContentParameterInput("Ширина", "number", "12.5", "Размер в миллиметрах.");
+    using var created = await client.PostAsJsonAsync(collection, input);
+    await ExpectAsync(created, HttpStatusCode.Created);
+    var parameter = await created.Content.ReadFromJsonAsync<ContentParameterDto>()
+        ?? throw new InvalidOperationException("Parameter response is empty.");
+    var item = $"{collection}/{parameter.Id}";
+
+    using var invalid = await client.PutAsJsonAsync(item, input with { Value = "text" });
+    await ExpectAsync(invalid, HttpStatusCode.BadRequest);
+    using var wrongContent = await client.DeleteAsync($"/api/content/{contentId + 1}/parameters/{parameter.Id}");
+    await ExpectAsync(wrongContent, HttpStatusCode.NotFound);
+
+    var updated = input with { Kind = "link", Value = "https://example.test/document" };
+    using var update = await client.PutAsJsonAsync(item, updated);
+    await ExpectAsync(update, HttpStatusCode.NoContent);
+    var persisted = await client.GetFromJsonAsync<ContentParameterDto[]>(collection);
+    if (persisted?.SingleOrDefault() != parameter with { Kind = updated.Kind, Value = updated.Value })
+    {
+        throw new InvalidOperationException("Parameter and tooltip did not round-trip.");
+    }
+
+    using var deleted = await client.DeleteAsync(item);
+    await ExpectAsync(deleted, HttpStatusCode.NoContent);
+    using var missing = await client.GetAsync(item);
+    await ExpectAsync(missing, HttpStatusCode.NotFound);
+}
+
 static async Task CreateSchemaAsync(string connectionString, string schema)
 {
     await using var connection = new Npgsql.NpgsqlConnection(connectionString);
@@ -137,6 +203,44 @@ static async Task DropSchemaAsync(string connectionString, string schema)
     await using var command = connection.CreateCommand();
     command.CommandText = $"DROP SCHEMA IF EXISTS \"{schema}\" CASCADE";
     await command.ExecuteNonQueryAsync();
+}
+
+static async Task VerifyContentFreezeAsync(HttpClient client, ContentDto content)
+{
+    var route = $"/api/content/{content.Id}";
+    using var moderatorRequest = new HttpRequestMessage(HttpMethod.Put, $"{route}/freeze")
+    {
+        Content = JsonContent.Create(true)
+    };
+    moderatorRequest.Headers.Add("X-Check-Moderator", "1");
+    using var forbidden = await client.SendAsync(moderatorRequest);
+    await ExpectAsync(forbidden, HttpStatusCode.Forbidden);
+
+    using var frozen = await client.PutAsJsonAsync($"{route}/freeze", true);
+    await ExpectAsync(frozen, HttpStatusCode.NoContent);
+
+    using var edit = await client.PutAsJsonAsync(route, new UpdateContentDto
+    {
+        Name = content.Name,
+        Description = content.Description,
+        CategoryId = content.CategoryId,
+        ContentStatusId = content.ContentStatusId,
+        TagIds = content.TagIds
+    });
+    await ExpectAsync(edit, HttpStatusCode.NoContent);
+    var updated = await client.GetFromJsonAsync<ContentDto>(route);
+    if (updated?.IsFrozen != true)
+    {
+        throw new InvalidOperationException("The content update cleared the freeze status.");
+    }
+
+    using var thawed = await client.PutAsJsonAsync($"{route}/freeze", false);
+    await ExpectAsync(thawed, HttpStatusCode.NoContent);
+    updated = await client.GetFromJsonAsync<ContentDto>(route);
+    if (updated?.IsFrozen != false)
+    {
+        throw new InvalidOperationException("The administrator could not thaw the content.");
+    }
 }
 
 static async Task ExpectAsync(HttpResponseMessage response, HttpStatusCode status)

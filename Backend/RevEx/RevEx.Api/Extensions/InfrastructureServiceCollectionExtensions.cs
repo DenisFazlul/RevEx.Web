@@ -17,6 +17,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IDesktopReleaseStore, FileDesktopReleaseStore>();
         services.AddSingleton<IRevitReleaseStore, FileRevitReleaseStore>();
         services.AddScoped<IContentRepository, PostgresContentRepository>();
+        services.AddScoped<IContentParameterRepository, PostgresContentParameterRepository>();
         services.AddScoped<IContentFileRepository, PostgresContentFileRepository>();
         services.AddScoped<IContentFileMetadataRepository, PostgresContentFileMetadataRepository>();
         services.AddScoped<ITagGroupRepository, PostgresTagGroupRepository>();

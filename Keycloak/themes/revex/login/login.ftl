@@ -5,57 +5,59 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light">
     <title>${msg("loginTitle", realm.displayName!'RevEx')}</title>
-    <link rel="icon" type="image/svg+xml" href="${url.resourcesPath}/img/revex-mark.svg">
+    <link rel="icon" type="image/png" href="${url.resourcesPath}/img/revex-logo.png">
     <link rel="stylesheet" href="${url.resourcesPath}/css/login.css">
 </head>
 <body>
 <main class="login-page">
     <section class="login-card" aria-labelledby="login-title">
-        <header class="brand">
-            <img class="brand__icon" src="${url.resourcesPath}/img/revex-mark.svg"
-                 width="64" height="64" alt="">
-            <span class="brand__name">RevEx</span>
-        </header>
-
-        <div class="login-heading">
-            <h1 id="login-title">Вход в аккаунт</h1>
-            <p>Введите данные, чтобы продолжить работу.</p>
+        <div class="login-illustration">
+            <img class="brand__icon" src="${url.resourcesPath}/img/tyubik.png"
+                 width="178" height="151" alt="">
         </div>
+        <div class="login-content">
+            <span class="brand__name">RevEx</span>
 
-        <#if message?has_content && message.type != 'warning'>
-            <div class="alert alert--${message.type}" role="alert">${message.summary}</div>
-        </#if>
+            <div class="login-heading">
+                <h1 id="login-title">Вход в аккаунт</h1>
+                <p>Введите данные, чтобы продолжить работу.</p>
+            </div>
 
-        <form class="login-form" action="${url.loginAction}" method="post">
-            <#if !usernameHidden??>
-                <label class="field" for="username">
-                    <span>Логин или email</span>
-                    <input id="username" name="username" type="text"
-                           value="${(login.username!'')}" autocomplete="username" autofocus required>
-                </label>
+            <#if message?has_content && message.type != 'warning'>
+                <div class="alert alert--${message.type}" role="alert">${message.summary}</div>
             </#if>
 
-            <label class="field" for="password">
-                <span>Пароль</span>
-                <span class="password-field">
-                    <input id="password" name="password" type="password"
-                           autocomplete="current-password" required>
-                    <button class="password-toggle" type="button" aria-label="Показать пароль"
-                            aria-controls="password" data-password-toggle>
-                        <span aria-hidden="true">Показать</span>
-                    </button>
-                </span>
-            </label>
+            <form class="login-form" action="${url.loginAction}" method="post">
+                <#if !usernameHidden??>
+                    <label class="field" for="username">
+                        <span>Логин или email</span>
+                        <input id="username" name="username" type="text"
+                               value="${(login.username!'')}" autocomplete="username" autofocus required>
+                    </label>
+                </#if>
 
-            <#if realm.rememberMe && !usernameHidden??>
-                <label class="remember-me" for="rememberMe">
-                    <input id="rememberMe" name="rememberMe" type="checkbox" checked>
-                    <span>${msg("rememberMe")}</span>
+                <label class="field" for="password">
+                    <span>Пароль</span>
+                    <span class="password-field">
+                        <input id="password" name="password" type="password"
+                               autocomplete="current-password" required>
+                        <button class="password-toggle" type="button" aria-label="Показать пароль"
+                                aria-controls="password" data-password-toggle>
+                            <span aria-hidden="true">Показать</span>
+                        </button>
+                    </span>
                 </label>
-            </#if>
 
-            <button class="submit-button" id="kc-login" name="login" type="submit">Войти</button>
-        </form>
+                <#if realm.rememberMe && !usernameHidden??>
+                    <label class="remember-me" for="rememberMe">
+                        <input id="rememberMe" name="rememberMe" type="checkbox" checked>
+                        <span>${msg("rememberMe")}</span>
+                    </label>
+                </#if>
+
+                <button class="submit-button" id="kc-login" name="login" type="submit">Войти</button>
+            </form>
+        </div>
     </section>
 
     <p class="login-footer">Безопасный вход через RevEx</p>
